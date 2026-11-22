@@ -16,7 +16,7 @@ Android TV boxes.
 | **Dictionary** | A dictionary from any language to any other. It shows every Wiktionary meaning (with tags, examples, synonyms, antonyms and related words), IPA pronunciations, inflected forms and etymology, plus the translations into the chosen target language. Inflected forms ("went", "huizen") find their lemma. *Search by meaning* is a reverse dictionary. When the app language has its own Wiktionary edition installed, meanings are also shown in that language. |
 | **Grammar** | *Rules*: every grammar rule known for a language (WALS + Grambank, 387 features for 3 500+ languages), grouped into sentence structure, word structure, sounds and other categories. Each rule includes its explanation and glossed example sentences. *Compare*: lines up two languages, highlights the rules where they differ, and lets you show only the differences. It also compares the forms of a word in both languages. |
 | **Characters** | For the selected language: its alphabet, capital letters, extra letters, digits and punctuation (CLDR), the letters its dictionary uses, and every Unicode character of its scripts (163 scripts). Tap a character to see its code point and name and to hear it. |
-| **Offline data** | Downloads Wiktionary language packs and translation models. Each is downloaded once and then works offline. |
+| **Offline data** | Choose what to download from this GitHub repository: tick the languages you want (searchable, with sizes, *Suggested* picks English + your languages), pick the meanings language (Wiktionary edition), and press *Download selected*. The translation models are downloaded here too. Everything downloaded works offline. On first start the app offers to open this page. |
 | **Settings** | Themes (light, dark with a neutral gray background, OLED black), app language, voice, speed, pitch, translation model, and updates. |
 
 **App language.** Pick any of 424 display languages. All 8 700+ language names in the app are then
@@ -38,8 +38,15 @@ Scripts written without spaces (Chinese, Japanese, Thai and others) are segmente
 longest dictionary match.
 
 **Offline.** Language names, grammar rules, grammar explanations and character charts are built into
-the app (3.8 MB). Dictionaries and the translation model are downloaded inside the app. After that,
-everything runs without a network connection.
+the app (3.8 MB). Dictionaries and the translation model are downloaded inside the app, from this
+repository's releases (`data-<edition>` for dictionaries, `model-<id>` for the mirrored translation
+models). After that, everything runs without a network connection.
+
+**Full installers.** Windows, macOS and Linux also get a *full* variant (`…-full-setup.exe`,
+`…-macos-full.zip`, `…-full.AppImage`, `…-full.tar.gz`) that already contains the M2M-100 translation
+model and the largest dictionaries (English first), up to GitHub's 2 GB per-file limit, so it works fully
+offline right after installation. More languages can still be added from the Offline data page. A full
+installation keeps updating to the full variant.
 
 **Updates from inside the app.** The app checks GitHub Releases at startup, and you can also check
 from Settings.
@@ -81,16 +88,16 @@ flutter run                      # or: flutter build apk / windows / macos / lin
 
 1. **Add the Android signing key** as repository secrets (see *Android signing key* below). The
    Release workflow builds and publishes nothing until these secrets exist.
-2. **Build the offline dictionaries once:** Actions → *Offline data packs* → *Run workflow*. This
+2. **Build the offline data once** (needed before the full installers contain dictionaries): Actions → *Offline data packs* → *Run workflow*. This
    converts the Wiktionary dumps from kaikki.org into language packs and uploads them to the
    `data-<edition>` releases that the app downloads from. Run it again whenever you want fresher data.
 3. **Release the app:** push a tag (`git tag v1.0.0 && git push origin v1.0.0`) or run *Release*
    manually. It builds these files and attaches them to the GitHub Release:
    * `universal-translator-android.apk` and `.aab`
    * `universal-translator-android-legacy.apk`
-   * `universal-translator-windows-x64-setup.exe` and `-portable.zip`
-   * `universal-translator-macos.zip`
-   * `universal-translator-linux-x86_64.AppImage`, `-aarch64.AppImage` and the `.tar.gz` bundles
+   * `universal-translator-windows-x64-setup.exe`, `-full-setup.exe` and `-portable.zip`
+   * `universal-translator-macos.zip` and `-macos-full.zip`
+   * `universal-translator-linux-x86_64.AppImage`, `-aarch64.AppImage`, their `-full` variants and the `.tar.gz` bundles
    * `universal-translator-ios-unsigned.ipa`
 
    The iOS file is unsigned. To install it you need your own signing (Xcode, AltStore) or the App

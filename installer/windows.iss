@@ -15,9 +15,18 @@ AppPublisherURL=https://github.com/GMWester/Universal-transator
 DefaultDirName={localappdata}\Programs\Universal Translator
 DefaultGroupName=Universal Translator
 PrivilegesRequired=lowest
+#ifdef Full
+OutputBaseFilename=universal-translator-windows-x64-full-setup
+DiskSpanning=no
+#else
 OutputBaseFilename=universal-translator-windows-x64-setup
+#endif
 OutputDir=..\dist
+#ifdef Full
+Compression=lzma2/normal
+#else
 Compression=lzma2/max
+#endif
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -30,6 +39,10 @@ MinVersion=10.0
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+#ifdef Full
+; Offline dictionaries + translation model (full installer only)
+Source: "{#DataDir}\*"; DestDir: "{app}\offline-data"; Flags: ignoreversion recursesubdirs createallsubdirs
+#endif
 
 [Icons]
 Name: "{group}\Universal Translator"; Filename: "{app}\universal_translator.exe"

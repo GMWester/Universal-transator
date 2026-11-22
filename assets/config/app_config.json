@@ -1,7 +1,28 @@
 {
   "githubRepo": "GMWester/Universal-transator",
   "dataReleaseTag": "data",
-  "dataEditions": ["en", "de", "fr", "es", "ru", "zh", "ja", "ko", "pl", "pt", "nl", "it", "tr", "el", "cs", "th", "ku", "ms", "vi", "id"],
+  "dataEditions": [
+    "en",
+    "de",
+    "fr",
+    "es",
+    "ru",
+    "zh",
+    "ja",
+    "ko",
+    "pl",
+    "pt",
+    "nl",
+    "it",
+    "tr",
+    "el",
+    "cs",
+    "th",
+    "ku",
+    "ms",
+    "vi",
+    "id"
+  ],
   "iosAppStoreUrl": "",
   "translationModels": [
     {
@@ -11,13 +32,24 @@
       "baseUrl": "https://huggingface.co/Xenova/nllb-200-distilled-600M/resolve/main/",
       "langTokenStyle": "nllb",
       "files": {
-        "encoder": ["onnx/encoder_model_quantized.onnx"],
-        "decoder": ["onnx/decoder_model_quantized.onnx"],
-        "decoderWithPast": ["onnx/decoder_with_past_model_quantized.onnx"],
-        "tokenizer": ["tokenizer.json"],
-        "config": ["config.json"]
+        "encoder": [
+          "onnx/encoder_model_quantized.onnx"
+        ],
+        "decoder": [
+          "onnx/decoder_model_quantized.onnx"
+        ],
+        "decoderWithPast": [
+          "onnx/decoder_with_past_model_quantized.onnx"
+        ],
+        "tokenizer": [
+          "tokenizer.json"
+        ],
+        "config": [
+          "config.json"
+        ]
       },
-      "approxSizeMB": 1300
+      "approxSizeMB": 1300,
+      "githubMirror": true
     },
     {
       "id": "m2m100_418M",
@@ -26,13 +58,24 @@
       "baseUrl": "https://huggingface.co/Xenova/m2m100_418M/resolve/main/",
       "langTokenStyle": "m2m",
       "files": {
-        "encoder": ["onnx/encoder_model_quantized.onnx"],
-        "decoder": ["onnx/decoder_model_quantized.onnx"],
-        "decoderWithPast": ["onnx/decoder_with_past_model_quantized.onnx"],
-        "tokenizer": ["tokenizer.json"],
-        "config": ["config.json"]
+        "encoder": [
+          "onnx/encoder_model_quantized.onnx"
+        ],
+        "decoder": [
+          "onnx/decoder_model_quantized.onnx"
+        ],
+        "decoderWithPast": [
+          "onnx/decoder_with_past_model_quantized.onnx"
+        ],
+        "tokenizer": [
+          "tokenizer.json"
+        ],
+        "config": [
+          "config.json"
+        ]
       },
-      "approxSizeMB": 900
+      "approxSizeMB": 900,
+      "githubMirror": true
     }
   ]
 }

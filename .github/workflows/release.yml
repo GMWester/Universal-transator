@@ -65,6 +65,21 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "build=$(( MA * 1000000 + MI * 1000 + PA ))" >> "$GITHUB_OUTPUT"
 
+  full-data:
+    # Offline data for the "full" desktop installers (largest dictionaries + M2M-100 model).
+    needs: signing-key-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect offline data
+        run: python3 tools/ci/fetch_full_data.py --repo "$GITHUB_REPOSITORY" --out offline-data --budget-mb 1900
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-data
+          path: offline-data
+          compression-level: 0
+          retention-days: 3
+
   android:
     needs: signing-key-check
     runs-on: ubuntu-latest
@@ -144,7 +159,7 @@ jobs:
         with: { name: android-legacy, path: dist/* }
 
   linux:
-    needs: signing-key-check
+    needs: [signing-key-check, full-data]
     strategy:
       fail-fast: false
       matrix:
@@ -184,13 +199,26 @@ jobs:
           chmod +x appimagetool
           ARCH=${{ matrix.appimage }} ./appimagetool --appimage-extract-and-run "$A" \
             dist/universal-translator-linux-${{ matrix.appimage }}.AppImage
+      - uses: actions/download-artifact@v4
+        with: { name: offline-data, path: offline-data }
+      - name: Full packages (with offline data)
+        run: |
+          B=$(ls -d build/linux/*/release/bundle)
+          A=$RUNNER_TEMP/AppDir
+          cp -r offline-data "$B/offline-data"
+          tar -C "$(dirname "$B")" -czf dist/universal-translator-linux-${{ matrix.arch }}-full.tar.gz bundle
+          cp -r offline-data "$A/offline-data"
+          ARCH=${{ matrix.appimage }} ./appimagetool --appimage-extract-and-run "$A" \
+            dist/universal-translator-linux-${{ matrix.appimage }}-full.AppImage
+          rm -rf "$B/offline-data" "$A/offline-data"
+          ls -la dist
       - uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.arch }}
           path: dist/*
 
   windows:
-    needs: signing-key-check
+    needs: [signing-key-check, full-data]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -208,11 +236,18 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.signing-key-check.outputs.version }}" installer\windows.iss
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath dist\universal-translator-windows-x64-portable.zip
+      - uses: actions/download-artifact@v4
+        with: { name: offline-data, path: offline-data }
+      - name: Full installer (with offline data)
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.signing-key-check.outputs.version }}" /DFull "/DDataDir=..\offline-data" installer\windows.iss
+          Get-ChildItem dist
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: dist/* }
 
   macos:
-    needs: signing-key-check
+    needs: [signing-key-check, full-data]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -232,6 +267,15 @@ jobs:
           # Ad-hoc signature (replace with a Developer ID + notarization for Gatekeeper-friendly installs).
           codesign --force --deep --sign - "$APP"
           ditto -c -k --keepParent "$APP" dist/universal-translator-macos.zip
+      - uses: actions/download-artifact@v4
+        with: { name: offline-data, path: offline-data }
+      - name: Full app (with offline data)
+        run: |
+          APP=$(ls -d build/macos/Build/Products/Release/*.app | head -1)
+          cp -R offline-data "$APP/Contents/Resources/offline-data"
+          codesign --force --deep --sign - "$APP"
+          ditto -c -k --keepParent "$APP" dist/universal-translator-macos-full.zip
+          ls -la dist
       - uses: actions/upload-artifact@v4
         with: { name: macos, path: dist/* }
 
@@ -261,8 +305,13 @@ jobs:
     if: ${{ !cancelled() && needs.android.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Free disk space (full installers are ~2 GB each)
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
       - uses: actions/download-artifact@v4
-        with: { path: dist, merge-multiple: true }
+        with:
+          path: dist
+          merge-multiple: true
+          pattern: "{android,android-legacy,linux-*,windows,macos,ios}"
       - run: ls -la dist
       - uses: softprops/action-gh-release@v2
         with:

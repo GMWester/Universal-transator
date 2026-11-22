@@ -57,6 +57,12 @@ class Updater extends ChangeNotifier {
     return '';
   }
 
+  /// universal-translator-linux-x86_64.AppImage -> universal-translator-linux-x86_64-full.AppImage
+  static String fullVariant(String asset) {
+    final i = asset.indexOf('.');
+    return i < 0 ? '$asset-full' : '${asset.substring(0, i)}-full${asset.substring(i)}';
+  }
+
   static bool isNewer(String a, String b) {
     List<int> p(String v) => v
         .replaceFirst(RegExp('^v'), '')
@@ -78,14 +84,22 @@ class Updater extends ChangeNotifier {
     try {
       final j = await getJson('${AppConfig.instance.releasesApi}/latest') as Map;
       final tag = (j['tag_name'] ?? '') as String;
+      // A "full" installation (with bundled offline data) updates to the full
+      // variant where the whole app is replaced (AppImage, macOS bundle).
       final want = assetNameForPlatform();
+      final full = AppPaths.instance.bundledDataDir != null && !Platform.isWindows
+          ? fullVariant(want)
+          : null;
       String? url, name;
       var size = 0;
-      for (final a in j['assets'] as List? ?? const []) {
-        if (a['name'] == want) {
-          url = a['browser_download_url'];
-          name = a['name'];
-          size = a['size'] ?? 0;
+      final candidates = <String>[...?(full == null ? null : [full]), want];
+      for (final candidate in candidates) {
+        for (final a in j['assets'] as List? ?? const []) {
+          if (url == null && a['name'] == candidate) {
+            url = a['browser_download_url'];
+            name = a['name'];
+            size = a['size'] ?? 0;
+          }
         }
       }
       final r = ReleaseInfo(tag.replaceFirst('v', ''), (j['body'] ?? '') as String, url, name,

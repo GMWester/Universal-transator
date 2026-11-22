@@ -2,11 +2,15 @@
 import 'package:flutter/material.dart';
 
 import '../core/config.dart';
+import '../data/normalize.dart';
 import '../data/packs.dart';
 import '../translate/nmt.dart';
 import 'home.dart';
 import 'widgets.dart';
 
+/// Lets the user choose which data to download from the project's GitHub
+/// releases: dictionaries per language (and per meanings language) and the
+/// translation model. Everything downloaded works offline afterwards.
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({super.key});
   @override
@@ -18,8 +22,15 @@ class _DownloadsPageState extends State<DownloadsPage> {
   String filter = '';
   bool loading = false;
   String? error;
+  bool onlyInstalled = false;
+  final Set<String> selected = {}; // language codes in [edition]
   final Map<String, double?> modelProgress = {};
-  bool bulk = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (app.packs.manifests[edition] == null) _refresh();
+  }
 
   Future<void> _refresh() async {
     setState(() {
@@ -34,19 +45,26 @@ class _DownloadsPageState extends State<DownloadsPage> {
     if (mounted) setState(() => loading = false);
   }
 
-  @override
-  void initState() {
-    super.initState();
-    if (app.packs.manifests['en'] == null) _refresh();
+  /// language code -> pack in the current edition
+  Map<String, PackInfo> get _langPacks {
+    final out = <String, PackInfo>{};
+    for (final p in app.packs.manifests[edition] ?? const <PackInfo>[]) {
+      for (final l in p.langs.keys) {
+        out[l] = p;
+      }
+    }
+    return out;
   }
 
-  Future<void> _downloadAll(List<PackInfo> list) async {
-    setState(() => bulk = true);
-    for (final p in list) {
-      if (!bulk || !mounted) break;
-      if (!app.packs.isInstalled(p.id)) await app.packs.install(p);
-    }
-    if (mounted) setState(() => bulk = false);
+  Set<PackInfo> _packsFor(Iterable<String> langs) {
+    final lp = _langPacks;
+    return {for (final l in langs) if (lp[l] != null && !app.packs.isInstalled(lp[l]!.id)) lp[l]!};
+  }
+
+  void _selectSuggested() {
+    final ui = app.settings.appLanguage.split('-').first;
+    setState(() => selected.addAll({'en', ui, app.settings.lastFrom, app.settings.lastTo}
+        .where((l) => _langPacks.containsKey(l))));
   }
 
   @override
@@ -59,94 +77,188 @@ class _DownloadsPageState extends State<DownloadsPage> {
       child: AnimatedBuilder(
         animation: Listenable.merge([app.packs, app.langs]),
         builder: (context, _) {
-          final packs = app.packs.manifests[edition] ?? const <PackInfo>[];
-          String label(PackInfo p) {
-            final names = p.langs.keys.map(app.langs.name).toList()..sort();
-            return names.length <= 3 ? names.join(', ') : '${names.take(3).join(', ')} +${names.length - 3}';
+          final lp = _langPacks;
+          var langs = lp.keys.toList();
+          if (onlyInstalled) langs = langs.where((l) => app.packs.isInstalled(lp[l]!.id)).toList();
+          if (filter.isNotEmpty) {
+            final f = foldKey(filter);
+            langs = langs
+                .where((l) =>
+                    foldKey(app.langs.name(l)).contains(f) ||
+                    foldKey(lp[l]!.langs[l] ?? '').contains(f) ||
+                    l == f)
+                .toList();
           }
-
-          final shown = packs.where((p) {
-            if (filter.isEmpty) return true;
-            final f = filter.toLowerCase();
-            return p.langs.keys.any((c) => app.langs.name(c).toLowerCase().contains(f) || c == f) ||
-                p.langs.values.any((n) => n.toLowerCase().contains(f));
-          }).toList();
-          final total = packs.fold<int>(0, (n, p) => n + p.size);
-          return ListView(padding: const EdgeInsets.all(16), children: [
-            SectionTitle(tr('translationModel')),
-            for (final m in AppConfig.instance.models) _modelTile(context, m),
-            SectionTitle(tr('wikiPacks')),
-            Text(tr('wikiPacksHelp'), style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
-            Row(children: [
-              Text('${tr('meaningsIn')}: '),
-              DropdownButton<String>(
-                value: edition,
-                items: [
-                  for (final e in AppConfig.instance.dataEditions)
-                    DropdownMenuItem(value: e, child: Text('${app.langs.name(e)} Wiktionary')),
-                ],
-                onChanged: (v) {
-                  setState(() => edition = v!);
-                  if (app.packs.manifests[edition] == null) _refresh();
-                },
-              ),
-            ]),
-            Text('${tr('installed')}: ${fmtBytes(app.packs.installedBytes)}',
-                style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
-            TextField(
-              decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('searchLanguage')),
-              onChanged: (v) => setState(() => filter = v),
+          // biggest dictionaries first, then alphabetical
+          langs.sort((a, b) {
+            final ea = lp[a]!.entries[a] ?? 0, eb = lp[b]!.entries[b] ?? 0;
+            if ((ea >= 1000) != (eb >= 1000)) return ea >= 1000 ? -1 : 1;
+            if (ea >= 1000 && ea != eb) return eb.compareTo(ea);
+            return foldKey(app.langs.name(a)).compareTo(foldKey(app.langs.name(b)));
+          });
+          final todo = _packsFor(selected);
+          final todoBytes = todo.fold<int>(0, (n, p) => n + p.size);
+          final th = Theme.of(context).textTheme;
+          return Column(children: [
+            Expanded(
+              child: CustomScrollView(slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      SectionTitle(tr('translationModel')),
+                      for (final m in AppConfig.instance.models) _modelTile(context, m),
+                      SectionTitle(tr('wikiPacks')),
+                      Text(tr('wikiPacksHelp'), style: th.bodySmall),
+                      const SizedBox(height: 8),
+                      Wrap(spacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                        Text('${tr('meaningsIn')}:'),
+                        DropdownButton<String>(
+                          value: edition,
+                          items: [
+                            for (final e in AppConfig.instance.dataEditions)
+                              DropdownMenuItem(value: e, child: Text(app.langs.name(e))),
+                          ],
+                          onChanged: (v) {
+                            setState(() {
+                              edition = v!;
+                              selected.clear();
+                            });
+                            if (app.packs.manifests[edition] == null) _refresh();
+                          },
+                        ),
+                      ]),
+                      Text('${tr('installed')}: ${fmtBytes(app.packs.installedBytes)}', style: th.bodySmall),
+                      const SizedBox(height: 8),
+                      TextField(
+                        decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('searchLanguage')),
+                        onChanged: (v) => setState(() => filter = v),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(spacing: 8, runSpacing: 4, children: [
+                        ActionChip(
+                          avatar: const Icon(Icons.auto_awesome, size: 18),
+                          label: Text(tr('suggested')),
+                          onPressed: _selectSuggested,
+                        ),
+                        ActionChip(
+                          avatar: const Icon(Icons.select_all, size: 18),
+                          label: Text('${tr('selectShown')} (${langs.length})'),
+                          onPressed: () => setState(() => selected.addAll(langs)),
+                        ),
+                        ActionChip(
+                          avatar: const Icon(Icons.deselect, size: 18),
+                          label: Text(tr('clearSelection')),
+                          onPressed: () => setState(selected.clear),
+                        ),
+                        FilterChip(
+                          label: Text(tr('installed')),
+                          selected: onlyInstalled,
+                          onSelected: (v) => setState(() => onlyInstalled = v),
+                        ),
+                      ]),
+                      if (loading) const LinearProgressIndicator(),
+                      if (error != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text('${tr('noDataYet')}\n$error',
+                              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                        ),
+                    ]),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => _langTile(context, langs[i], lp[langs[i]]!),
+                      childCount: langs.length,
+                    ),
+                  ),
+                ),
+              ]),
             ),
-            const SizedBox(height: 8),
-            if (loading) const LinearProgressIndicator(),
-            if (error != null) Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            if (packs.isNotEmpty)
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: bulk
-                    ? OutlinedButton.icon(
-                        onPressed: () => setState(() => bulk = false),
-                        icon: const Icon(Icons.stop),
-                        label: Text(tr('cancel')))
-                    : OutlinedButton.icon(
-                        onPressed: () => _downloadAll(packs),
-                        icon: const Icon(Icons.download),
-                        label: Text('${tr('downloadAll')} (${fmtBytes(total)})')),
+            // download bar
+            Material(
+              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Row(children: [
+                    Expanded(
+                      child: app.packs.bulkRunning
+                          ? Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                              Text(tr('downloading')),
+                              const SizedBox(height: 4),
+                              LinearProgressIndicator(value: _activeFraction()),
+                            ])
+                          : Text(tr('selectedSummary', ['${selected.length}', fmtBytes(todoBytes)])),
+                    ),
+                    const SizedBox(width: 12),
+                    app.packs.bulkRunning
+                        ? OutlinedButton.icon(
+                            onPressed: app.packs.cancelBulk, icon: const Icon(Icons.stop), label: Text(tr('cancel')))
+                        : FilledButton.icon(
+                            onPressed: todo.isEmpty
+                                ? null
+                                : () async {
+                                    await app.packs.installAll(todo.toList());
+                                    if (mounted) setState(selected.clear);
+                                  },
+                            icon: const Icon(Icons.download),
+                            label: Text(tr('downloadSelected')),
+                          ),
+                  ]),
+                ),
               ),
-            for (final p in shown) _packTile(context, p, label(p)),
+            ),
           ]);
         },
       ),
     );
   }
 
-  Widget _packTile(BuildContext context, PackInfo p, String label) {
+  double? _activeFraction() {
+    for (final s in app.packs.active.values) {
+      if (s.error == null) return s.fraction;
+    }
+    return null;
+  }
+
+  Widget _langTile(BuildContext context, String l, PackInfo p) {
     final st = app.packs.active[p.id];
     final inst = app.packs.isInstalled(p.id);
-    final entries = p.entries.values.fold<int>(0, (a, b) => a + b);
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(label),
+    final bundled = app.packs.isBundled(p.id);
+    final entries = p.entries[l] ?? 0;
+    final shared = p.langs.length > 1;
+    final sub = [
+      '$entries ${tr('entries')}',
+      shared ? '${fmtBytes(p.size)} ${tr('sharedPack', ['${p.langs.length}'])}' : fmtBytes(p.size),
+      if (bundled) tr('includedInInstaller'),
+    ].join(' · ');
+    return CheckboxListTile(
+      value: inst ? true : selected.contains(l),
+      onChanged: inst || st != null
+          ? null
+          : (v) => setState(() => v == true ? selected.add(l) : selected.remove(l)),
+      title: Text(app.langs.name(l)),
       subtitle: st != null
           ? (st.error != null
               ? Text(st.error!, style: TextStyle(color: Theme.of(context).colorScheme.error))
               : LinearProgressIndicator(value: st.fraction))
-          : Text('${fmtBytes(p.size)} · $entries entries'),
-      trailing: inst
+          : Text(sub),
+      secondary: inst && !bundled
           ? IconButton(
               tooltip: tr('remove'), icon: const Icon(Icons.delete_outline), onPressed: () => app.packs.remove(p.id))
-          : IconButton(
-              tooltip: tr('download'),
-              icon: const Icon(Icons.download),
-              onPressed: st != null ? null : () => app.packs.install(p)),
-      leading: Icon(inst ? Icons.offline_pin : Icons.cloud_outlined),
+          : Icon(inst ? Icons.offline_pin : Icons.cloud_outlined),
+      controlAffinity: ListTileControlAffinity.leading,
     );
   }
 
   Widget _modelTile(BuildContext context, ModelSpec m) {
     final inst = NmtModel.isInstalled(m);
+    final bundled = NmtModel.isBundled(m);
     final prog = modelProgress[m.id];
     final busy = modelProgress.containsKey(m.id);
     return Card(
@@ -155,8 +267,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
         title: Text(m.name),
         subtitle: busy
             ? LinearProgressIndicator(value: prog)
-            : Text('${inst ? tr('installed') : '~${m.approxSizeMB} MB'} · ${tr('license')}: ${m.license}'),
-        trailing: busy
+            : Text('${inst ? (bundled ? tr('includedInInstaller') : tr('installed')) : '~${m.approxSizeMB} MB'} · '
+                '${tr('license')}: ${m.license}'),
+        trailing: busy || bundled
             ? null
             : inst
                 ? IconButton(

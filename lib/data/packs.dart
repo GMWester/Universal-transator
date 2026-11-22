@@ -49,11 +49,17 @@ class PackManager extends ChangeNotifier implements PackSource {
   final Map<String, DownloadState> active = {};
   final Map<String, Database> _open = {};
   Map<String, dynamic> _installed = {}; // packId -> {edition, langs:{code:name}}
+  /// Packs shipped inside a "full" installer: packId -> {edition, langs, size, path}
+  final Map<String, dynamic> _bundled = {};
+
+  Map<String, dynamic> get _entries => {..._installed, ..._bundled};
+
+  bool isBundled(String packId) => _bundled.containsKey(packId);
 
   File get _installedFile => File('${AppPaths.instance.packsDir.path}${Platform.pathSeparator}installed.json');
   File _manifestCache(String ed) =>
       File('${AppPaths.instance.packsDir.path}${Platform.pathSeparator}manifest-$ed.json');
-  String _dbPath(String packId) =>
+  String _dbPath(String packId) => _bundled[packId]?['path'] as String? ??
       '${AppPaths.instance.packsDir.path}${Platform.pathSeparator}$packId.sqlite';
 
   Future<void> init() async {
@@ -63,6 +69,17 @@ class PackManager extends ChangeNotifier implements PackSource {
       }
     } catch (_) {
       _installed = {};
+    }
+    final b = AppPaths.instance.bundledDataDir;
+    if (b != null) {
+      try {
+        final sep = Platform.pathSeparator;
+        final j = jsonDecode(await File('${b.path}${sep}bundled.json').readAsString()) as Map;
+        j.forEach((id, v) {
+          final path = '${b.path}${sep}packs$sep$id.sqlite';
+          if (File(path).existsSync()) _bundled[id as String] = {...Map<String, dynamic>.from(v), 'path': path};
+        });
+      } catch (_) {}
     }
     for (final ed in AppConfig.instance.dataEditions) {
       final f = _manifestCache(ed);
@@ -81,7 +98,7 @@ class PackManager extends ChangeNotifier implements PackSource {
 
   void _registerLanguages() {
     final names = <String, String>{};
-    for (final v in _installed.values) {
+    for (final v in _entries.values) {
       (v['langs'] as Map).forEach((k, n) => names[k as String] = n as String);
     }
     final en = manifests['en'];
@@ -103,13 +120,13 @@ class PackManager extends ChangeNotifier implements PackSource {
   }
 
   bool isInstalled(String packId) =>
-      _installed.containsKey(packId) && File(_dbPath(packId)).existsSync();
+      _entries.containsKey(packId) && File(_dbPath(packId)).existsSync();
 
-  Iterable<String> get installedIds => _installed.keys.where(isInstalled);
+  Iterable<String> get installedIds => _entries.keys.where(isInstalled);
 
   /// Languages with an installed pack for [edition].
   Set<String> installedLanguages([String edition = 'en']) => {
-        for (final e in _installed.entries)
+        for (final e in _entries.entries)
           if (e.value['edition'] == edition && isInstalled(e.key))
             ...(e.value['langs'] as Map).keys.cast<String>()
       };
@@ -151,6 +168,28 @@ class PackManager extends ChangeNotifier implements PackSource {
     notifyListeners();
   }
 
+  /// Downloads several packs one after another (the in-app data picker).
+  bool bulkRunning = false;
+  Future<void> installAll(Iterable<PackInfo> list) async {
+    if (bulkRunning) return;
+    bulkRunning = true;
+    notifyListeners();
+    try {
+      for (final p in list) {
+        if (!bulkRunning) break;
+        if (!isInstalled(p.id)) await install(p);
+      }
+    } finally {
+      bulkRunning = false;
+      notifyListeners();
+    }
+  }
+
+  void cancelBulk() {
+    bulkRunning = false;
+    notifyListeners();
+  }
+
   Future<void> installLanguage(String lang, {String edition = 'en'}) async {
     var p = packFor(edition, lang);
     if (p == null) {
@@ -162,6 +201,7 @@ class PackManager extends ChangeNotifier implements PackSource {
   }
 
   Future<void> remove(String packId) async {
+    if (isBundled(packId)) return; // part of the installer
     _close(packId);
     final f = File(_dbPath(packId));
     if (await f.exists()) await f.delete();
@@ -177,7 +217,7 @@ class PackManager extends ChangeNotifier implements PackSource {
   /// Open database of the installed pack holding [lang] in [edition].
   @override
   Database? dbFor(String lang, {String edition = 'en'}) {
-    for (final e in _installed.entries) {
+    for (final e in _entries.entries) {
       if (e.value['edition'] == edition && (e.value['langs'] as Map).containsKey(lang)) {
         return _db(e.key);
       }
@@ -187,7 +227,7 @@ class PackManager extends ChangeNotifier implements PackSource {
 
   /// All open databases for an edition (for cross-pack queries).
   Iterable<Database> dbsForEdition(String edition) sync* {
-    for (final e in _installed.entries) {
+    for (final e in _entries.entries) {
       if (e.value['edition'] == edition) {
         final d = _db(e.key);
         if (d != null) yield d;

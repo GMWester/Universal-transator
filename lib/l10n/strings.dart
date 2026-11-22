@@ -102,6 +102,19 @@ class S {
     'sentenceStructure': 'Sentence structure',
     'wordStructure': 'Word structure',
     'codesTitle': 'Possible values',
+    'suggested': 'Suggested',
+    'selectShown': 'Select shown',
+    'clearSelection': 'Clear',
+    'selectedSummary': '{0} selected · {1} to download',
+    'downloadSelected': 'Download selected',
+    'entries': 'entries',
+    'sharedPack': '(one download for {0} languages)',
+    'includedInInstaller': 'included in this installation',
+    'noDataYet': 'The data list could not be loaded (no internet, or the data has not been published yet).',
+    'firstRunTitle': 'Download dictionaries',
+    'firstRunBody': 'Grammar and characters already work offline. Choose which dictionaries to download for offline use - you can change this any time under Offline data.',
+    'chooseData': 'Choose data',
+    'later': 'Later',
   };
 
   static const Map<String, Map<String, String>> _t = {
@@ -205,6 +218,13 @@ class S {
       'sources': 'Gegevensbronnen', 'version': 'Versie', 'cancel': 'Annuleren', 'error': 'Fout',
       'meaningSearch': 'Zoeken op betekenis', 'chooseLanguage': 'Kies taal', 'wikiPacks': 'Woordenboeken (WikiWoordenboek)',
       'translationsTo': 'In het {0}', 'downloadModel': 'Model downloaden', 'deleteModel': 'Model verwijderen',
+      'suggested': 'Voorgesteld', 'selectShown': 'Getoonde selecteren', 'clearSelection': 'Wissen',
+      'selectedSummary': '{0} geselecteerd · {1} te downloaden', 'downloadSelected': 'Selectie downloaden',
+      'entries': 'woorden', 'sharedPack': '(één download voor {0} talen)',
+      'includedInInstaller': 'meegeleverd met deze installatie',
+      'firstRunTitle': 'Woordenboeken downloaden',
+      'firstRunBody': 'Grammatica en tekens werken al offline. Kies welke woordenboeken je offline wilt gebruiken - dit kan altijd later via Offline gegevens.',
+      'chooseData': 'Gegevens kiezen', 'later': 'Later',
       'approximate': 'Benaderende woord-voor-woordvertaling (geen neuraal model voor dit taalpaar).',
     },
     'pt': {

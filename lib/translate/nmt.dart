@@ -23,14 +23,30 @@ class NmtModel {
   int eos = 2, decoderStart = 2, pad = 1;
   final Map<String, int> _langTokens = {};
 
+  static const _required = ['encoder', 'decoder', 'tokenizer', 'config'];
+
+  static String _file(String dir, String role) =>
+      '$dir${Platform.pathSeparator}$role${role == 'tokenizer' || role == 'config' ? '.json' : '.onnx'}';
+
+  /// Model shipped in a "full" installer: `offline-data/models/<id>`.
+  static String? bundledDir(ModelSpec s) {
+    final b = AppPaths.instance.bundledDataDir;
+    if (b == null) return null;
+    final d = '${b.path}${Platform.pathSeparator}models${Platform.pathSeparator}${s.id}';
+    return _required.every((r) => File(_file(d, r)).existsSync()) ? d : null;
+  }
+
+  static bool isBundled(ModelSpec s) => bundledDir(s) != null;
+
   static String modelDir(ModelSpec s) =>
+      bundledDir(s) ?? '${AppPaths.instance.modelsDir.path}${Platform.pathSeparator}${s.id}';
+
+  static String _downloadDir(ModelSpec s) =>
       '${AppPaths.instance.modelsDir.path}${Platform.pathSeparator}${s.id}';
 
-  static String _local(ModelSpec s, String role) =>
-      '${modelDir(s)}${Platform.pathSeparator}$role${role == 'tokenizer' || role == 'config' ? '.json' : '.onnx'}';
+  static String _local(ModelSpec s, String role) => _file(modelDir(s), role);
 
-  static bool isInstalled(ModelSpec s) =>
-      ['encoder', 'decoder', 'tokenizer', 'config'].every((r) => File(_local(s, r)).existsSync());
+  static bool isInstalled(ModelSpec s) => _required.every((r) => File(_local(s, r)).existsSync());
 
   /// Downloads all model files (once). Afterwards translation works offline.
   static Future<void> download(ModelSpec s, Progress onProgress) async {
@@ -39,9 +55,16 @@ class NmtModel {
     for (final role in roles) {
       Object? lastErr;
       var ok = false;
-      for (final rel in s.files[role]!) {
+      // GitHub mirror (release "model-<id>") first, then Hugging Face.
+      final urls = [
+        for (final rel in s.files[role]!) ...[
+          if (s.mirrorUrl.isNotEmpty) '${s.mirrorUrl}${rel.split('/').last}',
+          '${s.baseUrl}$rel',
+        ]
+      ];
+      for (final url in urls) {
         try {
-          await downloadFile('${s.baseUrl}$rel', File(_local(s, role)),
+          await downloadFile(url, File(_file(_downloadDir(s), role)),
               onProgress: (r, t) => onProgress(done * 1000 + (t > 0 ? r * 1000 ~/ t : 0), roles.length * 1000));
           ok = true;
           break;
@@ -55,7 +78,7 @@ class NmtModel {
   }
 
   static Future<void> delete(ModelSpec s) async {
-    final d = Directory(modelDir(s));
+    final d = Directory(_downloadDir(s));
     if (await d.exists()) await d.delete(recursive: true);
   }
 

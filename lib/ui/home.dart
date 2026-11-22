@@ -23,9 +23,29 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    if (!app.settings.dataPromptShown && app.packs.installedIds.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _firstRunPrompt());
+    }
     if (app.settings.autoCheckUpdates && !Platform.isIOS) {
       Future.delayed(const Duration(seconds: 3), _autoUpdateCheck);
     }
+  }
+
+  /// First start: offer to pick which dictionaries to download.
+  Future<void> _firstRunPrompt() async {
+    app.settings.dataPromptShown = true;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('firstRunTitle')),
+        content: Text(tr('firstRunBody')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('later'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('chooseData'))),
+        ],
+      ),
+    );
+    if (go == true && mounted) setState(() => index = 4);
   }
 
   Future<void> _autoUpdateCheck() async {

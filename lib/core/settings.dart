@@ -56,6 +56,9 @@ class Settings extends ChangeNotifier {
   String get lastTo => _p.getString('lastTo') ?? 'es';
   set lastTo(String v) => _p.setString('lastTo', v);
 
+  bool get dataPromptShown => _p.getBool('dataPromptShown') ?? false;
+  set dataPromptShown(bool v) => _p.setBool('dataPromptShown', v);
+
   String get skippedVersion => _p.getString('skippedVersion') ?? '';
   set skippedVersion(String v) => _p.setString('skippedVersion', v);
 

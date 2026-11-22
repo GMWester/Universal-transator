@@ -23,5 +23,21 @@ class AppPaths {
   String get sep => Platform.pathSeparator;
   Directory get packsDir => Directory('${dataDir.path}${sep}packs')..createSync(recursive: true);
   Directory get modelsDir => Directory('${dataDir.path}${sep}models')..createSync(recursive: true);
+  /// Offline data shipped inside a "full" installer (read-only), or null.
+  /// Windows/Linux: `<app dir>/offline-data`, macOS: `<App>.app/Contents/Resources/offline-data`.
+  late final Directory? bundledDataDir = () {
+    try {
+      final exeDir = File(Platform.resolvedExecutable).parent;
+      final candidates = [
+        Directory('${exeDir.path}${sep}offline-data'),
+        Directory('${exeDir.parent.path}${sep}Resources${sep}offline-data'),
+      ];
+      for (final d in candidates) {
+        if (File('${d.path}${sep}bundled.json').existsSync()) return d;
+      }
+    } catch (_) {}
+    return null;
+  }();
+
   Directory get updatesDir => Directory('${tempDir.path}${sep}ut_updates')..createSync(recursive: true);
 }

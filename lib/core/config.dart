@@ -10,13 +10,18 @@ class ModelSpec {
         baseUrl = j['baseUrl'],
         langTokenStyle = j['langTokenStyle'] ?? 'nllb',
         files = (j['files'] as Map).map((k, v) => MapEntry(k as String, List<String>.from(v))),
-        approxSizeMB = j['approxSizeMB'] ?? 0;
-  final String id, name, license, baseUrl, langTokenStyle;
+        approxSizeMB = j['approxSizeMB'] ?? 0,
+        mirrorUrl = j['githubMirror'] == true && AppConfig._repo != null
+            ? 'https://github.com/${AppConfig._repo}/releases/download/model-${j['id']}/'
+            : '';
+  final String id, name, license, baseUrl, langTokenStyle, mirrorUrl;
   final Map<String, List<String>> files;
   final int approxSizeMB;
 }
 
 class AppConfig {
+  static String? _repo;
+
   AppConfig._(Map<String, dynamic> j)
       : githubRepo = j['githubRepo'],
         dataReleaseTag = j['dataReleaseTag'] ?? 'data',
@@ -27,8 +32,9 @@ class AppConfig {
   static late AppConfig instance;
 
   static Future<AppConfig> load() async {
-    final s = await rootBundle.loadString('assets/config/app_config.json');
-    return instance = AppConfig._(jsonDecode(s));
+    final j = jsonDecode(await rootBundle.loadString('assets/config/app_config.json'));
+    _repo = j['githubRepo'] as String?;
+    return instance = AppConfig._(j);
   }
 
   final String githubRepo;
