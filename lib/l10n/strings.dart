@@ -115,6 +115,9 @@ class S {
     'firstRunBody': 'Grammar and characters already work offline. Choose which dictionaries to download for offline use - you can change this any time under Offline data.',
     'chooseData': 'Choose data',
     'later': 'Later',
+    'bulkProgress': 'Downloaded {0} of {1}',
+    'bulkFailed': '{0} failed',
+    'retryFailed': 'Retry failed ({0})',
     'modelNotOnPlatform': 'The neural translation model is not available on iPhone, iPad and Mac yet (Microsoft\'s download server for ONNX Runtime on Apple platforms is offline). Translation here uses the offline dictionaries and grammar rules.',
   };
 

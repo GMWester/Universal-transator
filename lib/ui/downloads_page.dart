@@ -207,13 +207,27 @@ class _DownloadsPageState extends State<DownloadsPage> {
                     Expanded(
                       child: app.packs.bulkRunning
                           ? Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                              Text(tr('downloading')),
+                              Text([
+                                tr('bulkProgress', ['${app.packs.bulkDone}', '${app.packs.bulkTotal}']),
+                                if (app.packs.bulkFailed > 0) tr('bulkFailed', ['${app.packs.bulkFailed}']),
+                              ].join(' · ')),
                               const SizedBox(height: 4),
-                              LinearProgressIndicator(value: _activeFraction()),
+                              LinearProgressIndicator(
+                                  value: app.packs.bulkTotal == 0
+                                      ? null
+                                      : (app.packs.bulkDone + app.packs.bulkFailed) / app.packs.bulkTotal),
                             ])
                           : Text(tr('selectedSummary', ['${selected.length}', fmtBytes(todoBytes)])),
                     ),
                     const SizedBox(width: 12),
+                    if (!app.packs.bulkRunning && app.packs.failedPacks(edition).isNotEmpty) ...[
+                      OutlinedButton.icon(
+                        onPressed: () => app.packs.installAll(app.packs.failedPacks(edition)),
+                        icon: const Icon(Icons.refresh),
+                        label: Text(tr('retryFailed', ['${app.packs.failedPacks(edition).length}'])),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     app.packs.bulkRunning
                         ? OutlinedButton.icon(
                             onPressed: app.packs.cancelBulk, icon: const Icon(Icons.stop), label: Text(tr('cancel')))
@@ -237,13 +251,6 @@ class _DownloadsPageState extends State<DownloadsPage> {
     );
   }
 
-  double? _activeFraction() {
-    for (final s in app.packs.active.values) {
-      if (s.error == null) return s.fraction;
-    }
-    return null;
-  }
-
   Widget _langTile(BuildContext context, String l, PackInfo p) {
     final st = app.packs.active[p.id];
     final inst = app.packs.isInstalled(p.id);
@@ -261,7 +268,10 @@ class _DownloadsPageState extends State<DownloadsPage> {
           ? null
           : (v) => setState(() => v == true ? selected.add(l) : selected.remove(l)),
       title: Text(app.langs.name(l)),
-      subtitle: st != null
+      subtitle: st == null && app.packs.failed[p.id] != null
+          ? Text('${tr('error')}: ${app.packs.failed[p.id]}',
+              style: TextStyle(color: Theme.of(context).colorScheme.error))
+          : st != null
           ? (st.error != null
               ? Text(st.error!, style: TextStyle(color: Theme.of(context).colorScheme.error))
               : LinearProgressIndicator(value: st.fraction))

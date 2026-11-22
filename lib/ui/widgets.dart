@@ -199,6 +199,9 @@ class NeedsPack extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(tr('needDownload', [app.langs.name(lang)])),
+              if (p != null && app.packs.failed[p.id] != null)
+                Text('${tr('error')}: ${app.packs.failed[p.id]}',
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
               const SizedBox(height: 12),
               if (st != null) ...[
                 Row(children: [

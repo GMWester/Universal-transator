@@ -150,61 +150,136 @@ class PackManager extends ChangeNotifier implements PackSource {
     }
   }
 
-  Future<void> install(PackInfo p) async {
-    if (active.containsKey(p.id)) return;
-    final st = active[p.id] = DownloadState(p.file);
-    notifyListeners();
-    final gz = File('${AppPaths.instance.packsDir.path}${Platform.pathSeparator}${p.file}');
-    try {
-      await downloadFile(AppConfig.instance.dataAssetUrl(p.edition, p.file), gz,
-          sha256Hex: p.sha256, cancel: st.cancel, onProgress: (r, t) {
-        st.received = r;
-        st.total = t == 0 ? p.size : t;
-        _notifyProgress();
-      });
-      if (st.cancel.cancelled) throw DownloadCancelled();
-      _close(p.id);
-      await gunzipFile(gz, File(_dbPath(p.id)));
-      await gz.delete();
-      _installed[p.id] = {'edition': p.edition, 'langs': p.langs, 'size': p.unpacked};
-      await _installedFile.writeAsString(jsonEncode(_installed));
-      active.remove(p.id);
-      _registerLanguages();
-    } on DownloadCancelled {
-      active.remove(p.id);
-      if (await gz.exists()) await gz.delete();
-    } catch (e) {
-      st.error = '$e';
-      if (await gz.exists()) await gz.delete();
-      Future.delayed(const Duration(seconds: 8), () {
-        active.remove(p.id);
-        notifyListeners();
-      });
+  /// Deletes a file, ignoring errors (Windows can keep a file locked for a
+  /// moment, e.g. by antivirus scanning).
+  static Future<void> _tryDelete(File f) async {
+    for (var i = 0; i < 5; i++) {
+      try {
+        if (await f.exists()) await f.delete();
+        return;
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
     }
-    notifyListeners();
   }
 
-  /// Downloads several packs one after another (the in-app data picker).
-  bool bulkRunning = false;
-  Future<void> installAll(Iterable<PackInfo> list) async {
-    if (bulkRunning) return;
-    bulkRunning = true;
-    notifyListeners();
-    try {
-      // Three downloads at a time: GitHub limits the speed per connection.
-      final queue = list.where((p) => !isInstalled(p.id)).toList();
-      Future<void> worker() async {
-        while (bulkRunning && queue.isNotEmpty) {
-          await install(queue.removeAt(0));
+  // installed.json is written by several parallel downloads: one at a time.
+  Future<void> _saveChain = Future.value();
+  Future<void> _saveInstalled() {
+    final next = _saveChain.then((_) async {
+      final data = jsonEncode(_installed);
+      for (var i = 0; i < 5; i++) {
+        try {
+          final tmp = File('${_installedFile.path}.tmp');
+          await tmp.writeAsString(data, flush: true);
+          if (await _installedFile.exists()) await _installedFile.delete();
+          await tmp.rename(_installedFile.path);
+          return;
+        } catch (_) {
+          await Future.delayed(const Duration(milliseconds: 300));
         }
       }
+    });
+    _saveChain = next.catchError((_) {});
+    return _saveChain;
+  }
 
+  /// Packs whose last download failed: packId -> error (shown until retried).
+  final Map<String, String> failed = {};
+
+  /// Downloads and unpacks one pack, retrying up to 3 times. Never throws.
+  Future<bool> install(PackInfo p) async {
+    if (active.containsKey(p.id)) return false;
+    final st = active[p.id] = DownloadState(p.file);
+    failed.remove(p.id);
+    notifyListeners();
+    final gz = File('${AppPaths.instance.packsDir.path}${Platform.pathSeparator}${p.file}');
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3 && !st.cancel.cancelled; attempt++) {
+      try {
+        st.received = 0;
+        await downloadFile(AppConfig.instance.dataAssetUrl(p.edition, p.file), gz,
+            sha256Hex: p.sha256, cancel: st.cancel, onProgress: (r, t) {
+          st.received = r;
+          st.total = t == 0 ? p.size : t;
+          _notifyProgress();
+        });
+        if (st.cancel.cancelled) throw DownloadCancelled();
+        _close(p.id);
+        await gunzipFile(gz, File(_dbPath(p.id)));
+        await _tryDelete(gz);
+        _installed[p.id] = {'edition': p.edition, 'langs': p.langs, 'size': p.unpacked};
+        await _saveInstalled();
+        active.remove(p.id);
+        _registerLanguages();
+        notifyListeners();
+        return true;
+      } on DownloadCancelled {
+        break;
+      } catch (e) {
+        lastError = e;
+        await _tryDelete(gz);
+        if (attempt < 3) await Future.delayed(Duration(seconds: attempt * 3));
+      }
+    }
+    active.remove(p.id);
+    await _tryDelete(gz);
+    if (!st.cancel.cancelled && lastError != null) failed[p.id] = _friendly(lastError);
+    notifyListeners();
+    return false;
+  }
+
+  static String _friendly(Object e) {
+    final s = '$e';
+    if (s.contains('No space') || s.contains('ENOSPC') || s.contains('not enough space') ||
+        s.contains('errno = 112') || s.contains('errno = 28')) {
+      return 'Not enough free disk space';
+    }
+    return s.length > 160 ? '${s.substring(0, 160)}…' : s;
+  }
+
+  /// Downloads several packs, three at a time (the in-app data picker).
+  /// One failing pack never stops the others; failed packs can be retried.
+  bool bulkRunning = false;
+  int bulkTotal = 0, bulkDone = 0, bulkFailed = 0;
+  Future<void> installAll(Iterable<PackInfo> list) async {
+    if (bulkRunning) return;
+    final queue = list.where((p) => !isInstalled(p.id)).toList();
+    bulkRunning = true;
+    bulkTotal = queue.length;
+    bulkDone = 0;
+    bulkFailed = 0;
+    notifyListeners();
+    Future<void> worker() async {
+      while (bulkRunning && queue.isNotEmpty) {
+        final p = queue.removeAt(0);
+        bool ok;
+        try {
+          ok = await install(p);
+        } catch (e) {
+          ok = false;
+          failed[p.id] = _friendly(e);
+        }
+        if (ok) {
+          bulkDone++;
+        } else if (failed.containsKey(p.id)) {
+          bulkFailed++;
+        }
+        notifyListeners();
+      }
+    }
+
+    try {
       await Future.wait([worker(), worker(), worker()]);
     } finally {
       bulkRunning = false;
       notifyListeners();
     }
   }
+
+  /// Packs (of [edition]) whose download failed.
+  List<PackInfo> failedPacks(String edition) =>
+      [for (final p in manifests[edition] ?? const <PackInfo>[]) if (failed.containsKey(p.id)) p];
 
   /// Stops one download.
   void cancel(String packId) => active[packId]?.cancel.cancel();
@@ -234,7 +309,7 @@ class PackManager extends ChangeNotifier implements PackSource {
     final f = File(_dbPath(packId));
     if (await f.exists()) await f.delete();
     _installed.remove(packId);
-    await _installedFile.writeAsString(jsonEncode(_installed));
+    await _saveInstalled();
     notifyListeners();
   }
 
