@@ -103,8 +103,10 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           V=${{ needs.signing-key-check.outputs.version }}; B=${{ needs.signing-key-check.outputs.build }}
-          flutter build apk --release --build-name "$V" --build-number "$B"
-          flutter build appbundle --release --build-name "$V" --build-number "$B"
+          # Retry: Maven Central sometimes answers 429 (rate limit).
+          retry() { for i in 1 2 3 4; do "$@" && return 0; echo "attempt $i failed, retrying in $((i*60))s"; sleep $((i*60)); done; return 1; }
+          retry flutter build apk --release --build-name "$V" --build-number "$B"
+          retry flutter build appbundle --release --build-name "$V" --build-number "$B"
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk dist/universal-translator-android.apk
           cp build/app/outputs/bundle/release/app-release.aab dist/universal-translator-android.aab
@@ -151,7 +153,8 @@ jobs:
           tools/ci/prepare_legacy_android.sh "$RUNNER_TEMP/legacy"
           cd "$RUNNER_TEMP/legacy"
           flutter pub get
-          flutter build apk --release --build-name "$V" --build-number "$B" \
+          retry() { for i in 1 2 3 4; do "$@" && return 0; echo "attempt $i failed, retrying in $((i*60))s"; sleep $((i*60)); done; return 1; }
+          retry flutter build apk --release --build-name "$V" --build-number "$B" \
             --dart-define=LEGACY_ANDROID=true -PlegacyMinSdk=21
           mkdir -p "$GITHUB_WORKSPACE/dist"
           cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/dist/universal-translator-android-legacy.apk"
