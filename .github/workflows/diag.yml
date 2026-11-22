@@ -7,9 +7,13 @@ jobs:
     steps:
       - run: |
           set +e
-          for n in onnxruntime-c onnxruntime-objc; do
-            s=$(python3 -c "import hashlib;h=hashlib.md5(b'$n').hexdigest();print('/'.join(h[:3]))")
-            echo "== $n"; curl -fsSL "https://cdn.cocoapods.org/Specs/$s/$n/1.28.0/$n.podspec.json"; echo
+          sudo apt-get install -y dnsutils >/dev/null 2>&1
+          echo "== dig"; dig +short download.onnxruntime.ai CNAME; dig +short download.onnxruntime.ai
+          C=$(dig +short download.onnxruntime.ai CNAME | head -1 | sed 's/\.$//')
+          while [ -n "$C" ]; do echo "cname: $C"; N=$(dig +short "$C" CNAME | head -1 | sed 's/\.$//'); [ -z "$N" ] && break; C2="$C"; C="$N"; done
+          for h in $(dig +short download.onnxruntime.ai CNAME | sed 's/\.$//') ; do
+            for f in pod-archive-onnxruntime-c-1.28.0.zip pod-archive-onnxruntime-objc-1.28.0.zip; do
+              echo "== https://$h/$f"; curl -sS -o /dev/null -w "%{http_code} %{size_download}\n" "https://$h/$f"
+            done
           done
-          echo "== tags"; git ls-remote --tags https://github.com/microsoft/onnxruntime | grep -E "v1\.2[6-9]" | head
-          echo "== releases"; curl -fsSL "https://api.github.com/repos/microsoft/onnxruntime/releases?per_page=5" | python3 -c "import json,sys;[print(r['tag_name'],[a['name'] for a in r['assets']][:40]) for r in json.load(sys.stdin)]"
+          echo "== repo"; curl -sI https://github.com/microsoft/onnxruntime | head -5
