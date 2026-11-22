@@ -4,6 +4,9 @@
 name: Offline data packs
 
 on:
+  # Push a tag like data-v1 to (re)build all packs, or run manually.
+  push:
+    tags: ["data-v*"]
   workflow_dispatch:
     inputs:
       editions:
@@ -24,7 +27,7 @@ jobs:
     steps:
       - id: m
         run: |
-          E='${{ github.event.inputs.editions }}'
+          E='${{ github.event.inputs.editions || 'en,de,fr,es,ru,zh,ja,ko,pl,pt,nl,it,tr,el,cs,th,ku,ms,vi,id' }}'
           echo "editions=$(echo "$E" | python3 -c 'import sys,json;print(json.dumps([e.strip() for e in sys.stdin.read().split(",") if e.strip()]))')" >> "$GITHUB_OUTPUT"
 
   build:
@@ -50,7 +53,7 @@ jobs:
           WORK=/mnt/work; sudo mkdir -p $WORK && sudo chown "$USER" $WORK || { WORK=$RUNNER_TEMP/work; mkdir -p $WORK; }
           curl -fL --retry 5 -o $WORK/raw.jsonl.gz "$URL"
           python3 tools/build_wiktionary.py --edition "$ED" --input $WORK/raw.jsonl.gz \
-            --out packs --work $WORK --version "${{ github.event.inputs.version }}"
+            --out packs --work $WORK --version "${{ github.event.inputs.version || github.ref_name }}"
           rm -f $WORK/raw.jsonl.gz
           ls -la packs | head -50
       - name: Upload to the "data-<edition>" release
