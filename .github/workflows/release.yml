@@ -1,0 +1,270 @@
+# Builds every platform and publishes a GitHub Release that the apps update from.
+#
+# Trigger: push a tag like v1.0.0  (git tag v1.0.0 && git push origin v1.0.0)
+#          or run it manually from the Actions tab.
+#
+# Nothing is released until the Android signing key is stored as repository
+# secrets (Settings > Secrets and variables > Actions):
+#   ANDROID_KEYSTORE_BASE64   base64 of the .jks keystore
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS
+#   ANDROID_KEY_PASSWORD
+#   ANDROID_CERT_SHA256       (optional) expected certificate fingerprint; the
+#                             build fails if the APK is signed with another key
+# Every Android release is signed with this same key, so installed apps update
+# in place without uninstalling.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 1.0.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: "3.50.1"
+  LEGACY_FLUTTER_VERSION: "3.32.8"
+
+jobs:
+  signing-key-check:
+    name: Android signing key present
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+    steps:
+      - name: Refuse to release without the Android key
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$KS" ] && missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -z "$KSP" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -z "$KA" ] && missing="$missing ANDROID_KEY_ALIAS"
+          [ -z "$KP" ] && missing="$missing ANDROID_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Release blocked: add the Android signing key secrets first:$missing"
+            exit 1
+          fi
+      - id: v
+        run: |
+          V="${{ github.event.inputs.version }}"
+          [ -z "$V" ] && V="${GITHUB_REF_NAME#v}"
+          if ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then echo "::error::bad version $V"; exit 1; fi
+          IFS=. read -r MA MI PA <<< "$V"
+          # Android versionCode must always increase: derived from the version.
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "build=$(( MA * 1000000 + MI * 1000 + PA ))" >> "$GITHUB_OUTPUT"
+
+  android:
+    needs: signing-key-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "${{ env.FLUTTER_VERSION }}"
+          channel: stable
+          cache: true
+      - name: Keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+      - name: Build APK + App Bundle
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          V=${{ needs.signing-key-check.outputs.version }}; B=${{ needs.signing-key-check.outputs.build }}
+          flutter build apk --release --build-name "$V" --build-number "$B"
+          flutter build appbundle --release --build-name "$V" --build-number "$B"
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/universal-translator-android.apk
+          cp build/app/outputs/bundle/release/app-release.aab dist/universal-translator-android.aab
+      - name: Verify signing certificate
+        env:
+          EXPECTED: ${{ secrets.ANDROID_CERT_SHA256 }}
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs dist/universal-translator-android.apk | tee certs.txt
+          if grep -q "CN=Android Debug" certs.txt; then echo "::error::APK is debug-signed"; exit 1; fi
+          if [ -n "$EXPECTED" ]; then
+            GOT=$(grep -m1 'SHA-256 digest' certs.txt | awk '{print $NF}' | tr -d ':' | tr a-f A-F)
+            WANT=$(echo "$EXPECTED" | tr -d ': ' | tr a-f A-F)
+            [ "$GOT" = "$WANT" ] || { echo "::error::certificate $GOT does not match ANDROID_CERT_SHA256"; exit 1; }
+          fi
+      - uses: actions/upload-artifact@v4
+        with: { name: android, path: dist/* }
+
+  android-legacy:
+    # Android 5.0-6.0 (API 21-23), e.g. older Android TV boxes. Built with the
+    # last Flutter release that supports them.
+    needs: signing-key-check
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "${{ env.LEGACY_FLUTTER_VERSION }}"
+          channel: stable
+      - name: Keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+      - name: Build legacy APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          V=${{ needs.signing-key-check.outputs.version }}; B=${{ needs.signing-key-check.outputs.build }}
+          tools/ci/prepare_legacy_android.sh "$RUNNER_TEMP/legacy"
+          cd "$RUNNER_TEMP/legacy"
+          flutter pub get
+          flutter build apk --release --build-name "$V" --build-number "$B" \
+            --dart-define=LEGACY_ANDROID=true -PlegacyMinSdk=21
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/dist/universal-translator-android-legacy.apk"
+      - uses: actions/upload-artifact@v4
+        with: { name: android-legacy, path: dist/* }
+
+  linux:
+    needs: signing-key-check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04, arch: x64, appimage: x86_64 }
+          - { runner: ubuntu-22.04-arm, arch: arm64, appimage: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.arch == 'arm64' }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - name: Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libfuse2 file
+      - name: Flutter
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Build
+        run: |
+          flutter config --no-analytics
+          flutter build linux --release --build-name ${{ needs.signing-key-check.outputs.version }} \
+            --build-number ${{ needs.signing-key-check.outputs.build }}
+          B=$(ls -d build/linux/*/release/bundle)
+          mkdir -p dist
+          tar -C "$(dirname "$B")" -czf dist/universal-translator-linux-${{ matrix.arch }}.tar.gz bundle
+          # AppImage
+          A=$RUNNER_TEMP/AppDir; mkdir -p "$A"
+          cp -r "$B"/. "$A/"
+          cp installer/universal-translator.desktop "$A/"
+          cp assets/icon/icon.png "$A/universal-translator.png"
+          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/universal_translator" "$@"\n' > "$A/AppRun"
+          chmod +x "$A/AppRun"
+          curl -fsSL -o appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.appimage }}.AppImage"
+          chmod +x appimagetool
+          ARCH=${{ matrix.appimage }} ./appimagetool --appimage-extract-and-run "$A" \
+            dist/universal-translator-linux-${{ matrix.appimage }}.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*
+
+  windows:
+    needs: signing-key-check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "${{ env.FLUTTER_VERSION }}"
+          channel: stable
+          cache: true
+      - name: Build
+        run: flutter build windows --release --build-name ${{ needs.signing-key-check.outputs.version }} --build-number ${{ needs.signing-key-check.outputs.build }}
+      - name: Installer + portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.signing-key-check.outputs.version }}" installer\windows.iss
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath dist\universal-translator-windows-x64-portable.zip
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: dist/* }
+
+  macos:
+    needs: signing-key-check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "${{ env.FLUTTER_VERSION }}"
+          channel: stable
+          cache: true
+      - name: Build
+        run: |
+          flutter build macos --release --build-name ${{ needs.signing-key-check.outputs.version }} --build-number ${{ needs.signing-key-check.outputs.build }}
+          mkdir -p dist
+          APP=$(ls -d build/macos/Build/Products/Release/*.app | head -1)
+          # Ad-hoc signature (replace with a Developer ID + notarization for Gatekeeper-friendly installs).
+          codesign --force --deep --sign - "$APP"
+          ditto -c -k --keepParent "$APP" dist/universal-translator-macos.zip
+      - uses: actions/upload-artifact@v4
+        with: { name: macos, path: dist/* }
+
+  ios:
+    needs: signing-key-check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "${{ env.FLUTTER_VERSION }}"
+          channel: stable
+          cache: true
+      - name: Build (unsigned)
+        run: |
+          flutter build ios --release --no-codesign --build-name ${{ needs.signing-key-check.outputs.version }} --build-number ${{ needs.signing-key-check.outputs.build }}
+          mkdir -p dist Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr dist/universal-translator-ios-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with: { name: ios, path: dist/* }
+
+  publish:
+    needs: [signing-key-check, android, android-legacy, linux, windows, macos, ios]
+    if: ${{ !cancelled() && needs.android.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - run: ls -la dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.signing-key-check.outputs.version }}
+          name: Universal Translator ${{ needs.signing-key-check.outputs.version }}
+          make_latest: true
+          generate_release_notes: true
+          files: dist/*

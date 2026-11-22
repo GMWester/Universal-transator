@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: subosito/flutter-action@v2
+        with: { flutter-version: "3.50.1", channel: stable, cache: true }
+      - name: Build IPAReader for host tests
+        run: |
+          cmake -S packages/ipareader_ffi/src -B build/test_lib/cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/test_lib/cmake
+          cp build/test_lib/cmake/libipareader_ffi.so build/test_lib/
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: LD_LIBRARY_PATH=$PWD/build/test_lib flutter test
+      - name: Data pipeline smoke test
+        run: |
+          python3 tools/build_wiktionary.py --input tools/testdata/sample.jsonl --out /tmp/packs --min-pack 100
+          test -f /tmp/packs/manifest-en.json

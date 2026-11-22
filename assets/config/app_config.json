@@ -1,0 +1,38 @@
+{
+  "githubRepo": "GMWester/Universal-transator",
+  "dataReleaseTag": "data",
+  "dataEditions": ["en", "de", "fr", "es", "ru", "zh", "ja", "ko", "pl", "pt", "nl", "it", "tr", "el", "cs", "th", "ku", "ms", "vi", "id"],
+  "iosAppStoreUrl": "",
+  "translationModels": [
+    {
+      "id": "nllb-200-distilled-600M",
+      "name": "NLLB-200 (200 languages)",
+      "license": "CC-BY-NC-4.0 (non-commercial use only)",
+      "baseUrl": "https://huggingface.co/Xenova/nllb-200-distilled-600M/resolve/main/",
+      "langTokenStyle": "nllb",
+      "files": {
+        "encoder": ["onnx/encoder_model_quantized.onnx"],
+        "decoder": ["onnx/decoder_model_quantized.onnx"],
+        "decoderWithPast": ["onnx/decoder_with_past_model_quantized.onnx"],
+        "tokenizer": ["tokenizer.json"],
+        "config": ["config.json"]
+      },
+      "approxSizeMB": 1300
+    },
+    {
+      "id": "m2m100_418M",
+      "name": "M2M-100 (100 languages)",
+      "license": "MIT",
+      "baseUrl": "https://huggingface.co/Xenova/m2m100_418M/resolve/main/",
+      "langTokenStyle": "m2m",
+      "files": {
+        "encoder": ["onnx/encoder_model_quantized.onnx"],
+        "decoder": ["onnx/decoder_model_quantized.onnx"],
+        "decoderWithPast": ["onnx/decoder_with_past_model_quantized.onnx"],
+        "tokenizer": ["tokenizer.json"],
+        "config": ["config.json"]
+      },
+      "approxSizeMB": 900
+    }
+  ]
+}

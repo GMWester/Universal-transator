@@ -1,0 +1,3 @@
+[submodule "packages/ipareader_ffi/third_party/ipareader"]
+	path = packages/ipareader_ffi/third_party/ipareader
+	url = https://github.com/GMWester/IPAReader

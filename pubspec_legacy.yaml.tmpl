@@ -1,0 +1,35 @@
+# Used only by the "android-legacy" release job: builds the Android 5.0/5.1/6.0
+# (API 21-23) APK with Flutter 3.32, the last Flutter that supports those
+# versions. Same code, older-compatible package versions.
+name: universal_translator
+description: "Offline translator, dictionary, grammar and script reference for all languages, with IPA speech by IPAReader."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  sqlite3: ">=2.4.0 <3.0.0"
+  sqlite3_flutter_libs: ">=0.5.20 <0.6.0"
+  flutter_onnxruntime: ">=1.5.1 <2.0.0"
+  audioplayers: ">=6.0.0 <7.0.0"
+  path_provider: ">=2.1.0 <3.0.0"
+  http: ">=1.2.0 <2.0.0"
+  shared_preferences: ">=2.2.0 <3.0.0"
+  package_info_plus: ">=8.0.0 <11.0.0"
+  crypto: ^3.0.3
+  url_launcher: ">=6.2.0 <7.0.0"
+  unorm_dart: ^0.3.0
+  ipareader_ffi:
+    path: packages/ipareader_ffi
+
+flutter:
+  assets:
+    - assets/data/
+    - assets/data/names/
+    - assets/config/
+  uses-material-design: true

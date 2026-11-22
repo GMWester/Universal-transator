@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Universal Translator
+Comment=Offline translator, dictionary, grammar and characters for all languages
+Exec=universal_translator
+Icon=universal-translator
+Categories=Education;Office;Dictionary;
+Terminal=false
