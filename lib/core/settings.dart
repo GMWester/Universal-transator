@@ -80,6 +80,13 @@ class Settings extends ChangeNotifier {
   String get lastTo => _p.getString('lastTo') ?? 'es';
   set lastTo(String v) => _p.setString('lastTo', v);
 
+  /// Optional online slang definitions from Urban Dictionary (off by default).
+  bool get urbanDictionary => _p.getBool('urbanDictionary') ?? false;
+  set urbanDictionary(bool v) {
+    _p.setBool('urbanDictionary', v);
+    notifyListeners();
+  }
+
   bool get dataPromptShown => _p.getBool('dataPromptShown') ?? false;
   set dataPromptShown(bool v) => _p.setBool('dataPromptShown', v);
 

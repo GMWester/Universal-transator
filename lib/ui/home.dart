@@ -9,6 +9,7 @@ import 'downloads_page.dart';
 import 'grammar_page.dart';
 import 'settings_page.dart';
 import 'translate_page.dart';
+import 'urban_page.dart';
 import 'widgets.dart';
 
 class HomePage extends StatefulWidget {
@@ -18,8 +19,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int index = 0;
-  final Set<int> _visited = {0}; // pages are built the first time they are opened
+  String tab = 'translate';
+  final Set<String> _visited = {'translate'}; // pages are built the first time they are opened
 
   @override
   void initState() {
@@ -32,9 +33,9 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _go(int i) => setState(() {
-        index = i;
-        _visited.add(i);
+  void _go(String id) => setState(() {
+        tab = id;
+        _visited.add(id);
       });
 
   /// First start: offer to pick which dictionaries to download.
@@ -51,7 +52,7 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-    if (go == true && mounted) _go(4);
+    if (go == true && mounted) _go('downloads');
   }
 
   Future<void> _autoUpdateCheck() async {
@@ -69,28 +70,25 @@ class _HomePageState extends State<HomePage> {
       AnimatedBuilder(animation: app.settings, builder: (context, _) => _build(context));
 
   Widget _build(BuildContext context) {
-    final items = [
-      (Icons.translate, tr('translate')),
-      (Icons.menu_book, tr('dictionary')),
-      (Icons.account_tree, tr('grammar')),
-      (Icons.abc, tr('characters')),
-      (Icons.download_for_offline, tr('downloads')),
-      (Icons.settings, tr('settings')),
+    final tabs = <(String, IconData, String, Widget)>[
+      ('translate', Icons.translate, tr('translate'), const TranslatePage()),
+      ('dictionary', Icons.menu_book, tr('dictionary'), const DictionaryPage()),
+      if (app.settings.urbanDictionary)
+        ('urban', Icons.forum_outlined, tr('urbanTab'), const UrbanPage()),
+      ('grammar', Icons.account_tree, tr('grammar'), const GrammarPage()),
+      ('characters', Icons.abc, tr('characters'), const CharactersPage()),
+      ('downloads', Icons.download_for_offline, tr('downloads'), const DownloadsPage()),
+      ('settings', Icons.settings, tr('settings'), const SettingsPage()),
     ];
-    final pages = const [
-      TranslatePage(),
-      DictionaryPage(),
-      GrammarPage(),
-      CharactersPage(),
-      DownloadsPage(),
-      SettingsPage(),
-    ];
+    var index = tabs.indexWhere((t) => t.$1 == tab);
+    if (index < 0) index = 0;
+    final items = [for (final t in tabs) (t.$2, t.$3)];
     final wide = MediaQuery.of(context).size.width >= 720;
     // Rebuild every page when the app language changes.
     final body = KeyedSubtree(
       key: ValueKey(app.settings.appLanguage),
       child: IndexedStack(index: index, children: [
-        for (var i = 0; i < pages.length; i++) _visited.contains(i) ? pages[i] : const SizedBox.shrink(),
+        for (final t in tabs) _visited.contains(t.$1) ? KeyedSubtree(key: ValueKey(t.$1), child: t.$4) : SizedBox.shrink(key: ValueKey(t.$1)),
       ]),
     );
     if (wide) {
@@ -100,7 +98,7 @@ class _HomePageState extends State<HomePage> {
             NavigationRail(
               selectedIndex: index,
               labelType: NavigationRailLabelType.all,
-              onDestinationSelected: _go,
+              onDestinationSelected: (i) => _go(tabs[i].$1),
               destinations: [
                 for (final it in items)
                   NavigationRailDestination(icon: Icon(it.$1), label: Text(it.$2)),
@@ -117,7 +115,7 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-        onDestinationSelected: _go,
+        onDestinationSelected: (i) => _go(tabs[i].$1),
         destinations: [for (final it in items) NavigationDestination(icon: Icon(it.$1), label: it.$2)],
       ),
     );

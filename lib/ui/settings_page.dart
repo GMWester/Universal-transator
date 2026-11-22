@@ -66,6 +66,14 @@ class SettingsPage extends StatelessWidget {
               subtitle: Slider(min: -8, max: 8, divisions: 32, value: s.pitchShift, onChanged: (v) => s.pitchShift = v),
               trailing: SpeakButton(onSpeak: () => app.speech.speakIpa('ˈjuːnɪvɜːsəl ˈtɹænsleɪtə')),
             ),
+            SectionTitle(tr('extraSources')),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(tr('urbanTitle')),
+              subtitle: Text(tr('urbanHelp')),
+              value: s.urbanDictionary,
+              onChanged: (v) => s.urbanDictionary = v,
+            ),
             SectionTitle(tr('translationModel')),
             if (!NmtModel.supportedOnThisPlatform) Text(tr('modelNotOnPlatform'), style: th.bodySmall),
             for (final m in AppConfig.instance.models.where((_) => NmtModel.supportedOnThisPlatform))

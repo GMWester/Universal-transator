@@ -9,6 +9,7 @@ import 'package:universal_translator/data/normalize.dart';
 import 'package:universal_translator/data/packs.dart';
 import 'package:universal_translator/speech/g2p.dart';
 import 'package:universal_translator/translate/tokenizer.dart';
+import 'package:universal_translator/data/urban.dart';
 import 'package:universal_translator/update/updater.dart';
 
 class FixturePacks implements PackSource {
@@ -81,5 +82,20 @@ void main() {
     final wav = IpaReader.synthWav('ˈhɛloʊ ˈwɝld');
     expect(String.fromCharCodes(wav.sublist(0, 4)), 'RIFF');
     expect(wav.length, greaterThan(10000));
+  });
+
+  test('Urban Dictionary entries: links unwrapped, votes parsed', () {
+    final d = UrbanDefinition({
+      'word': 'yeet',
+      'definition': 'To [throw] something\r\nwith force',
+      'example': 'He [yeeted] the ball',
+      'thumbs_up': 120,
+      'thumbs_down': 7,
+      'author': 'someone',
+      'permalink': 'https://www.urbandictionary.com/define.php?term=yeet',
+    });
+    expect(d.definition, 'To throw something\nwith force');
+    expect(d.example, 'He yeeted the ball');
+    expect(d.thumbsUp - d.thumbsDown, 113);
   });
 }
