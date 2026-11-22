@@ -366,22 +366,38 @@ def espeak_voices():
     return {line.split()[1] for line in out.splitlines()[1:] if len(line.split()) > 1}
 
 
-def _espeak_batch(args):
+def _espeak_run(voice, words):
     import subprocess
-    voice, words = args
     data = ''.join(w + '.\n' for w in words)  # the period keeps output aligned 1 line per word
     try:
         r = subprocess.run(['espeak-ng', '-q', '--ipa', '-v', voice, '-b', '1'], input=data.encode(),
-                           capture_output=True, timeout=600)
+                           capture_output=True, timeout=900)
     except Exception:
-        return []
+        return None
     lines = r.stdout.decode('utf-8', 'replace').split('\n')
     if lines and lines[-1] == '':
         lines.pop()
-    if len(lines) != len(words):
+    return lines
+
+
+def _espeak_aligned(voice, words):
+    """[(word, ipa)] - a batch whose output is misaligned (some words make
+    eSpeak print extra lines) is split in halves until it lines up."""
+    lines = _espeak_run(voice, words)
+    if lines is None:
         return []
+    if len(lines) == len(words):
+        return list(zip(words, lines))
+    if len(words) == 1:
+        return [(words[0], ' '.join(l.strip() for l in lines if l.strip()))]
+    mid = len(words) // 2
+    return _espeak_aligned(voice, words[:mid]) + _espeak_aligned(voice, words[mid:])
+
+
+def _espeak_batch(args):
+    voice, words = args
     out = []
-    for w, ipa in zip(words, lines):
+    for w, ipa in _espeak_aligned(voice, words):
         ipa = ipa.strip()
         if not ipa or '(' in ipa:  # "(en)..." means eSpeak switched language / spelled it out
             continue
