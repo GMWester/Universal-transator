@@ -186,10 +186,15 @@ class PackManager extends ChangeNotifier implements PackSource {
     bulkRunning = true;
     notifyListeners();
     try {
-      for (final p in list) {
-        if (!bulkRunning) break;
-        if (!isInstalled(p.id)) await install(p);
+      // Three downloads at a time: GitHub limits the speed per connection.
+      final queue = list.where((p) => !isInstalled(p.id)).toList();
+      Future<void> worker() async {
+        while (bulkRunning && queue.isNotEmpty) {
+          await install(queue.removeAt(0));
+        }
       }
+
+      await Future.wait([worker(), worker(), worker()]);
     } finally {
       bulkRunning = false;
       notifyListeners();

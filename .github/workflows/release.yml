@@ -219,32 +219,45 @@ jobs:
 
   windows:
     needs: [signing-key-check, full-data]
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-latest, arch: x64 }
+          - { runner: windows-11-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "${{ env.FLUTTER_VERSION }}"
-          channel: stable
-          cache: true
+      - name: Flutter
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch "$env:FLUTTER_VERSION" https://github.com/flutter/flutter.git C:\flutter
+          "C:\flutter\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
       - name: Build
-        run: flutter build windows --release --build-name ${{ needs.signing-key-check.outputs.version }} --build-number ${{ needs.signing-key-check.outputs.build }}
+        shell: pwsh
+        run: |
+          flutter config --no-analytics
+          flutter build windows --release --build-name ${{ needs.signing-key-check.outputs.version }} --build-number ${{ needs.signing-key-check.outputs.build }}
+          Get-ChildItem build\windows
       - name: Installer + portable zip
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.signing-key-check.outputs.version }}" installer\windows.iss
-          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath dist\universal-translator-windows-x64-portable.zip
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.signing-key-check.outputs.version }}" "/DArch=${{ matrix.arch }}" installer\windows.iss
+          Compress-Archive -Path build\windows\${{ matrix.arch }}\runner\Release\* -DestinationPath dist\universal-translator-windows-${{ matrix.arch }}-portable.zip
       - uses: actions/download-artifact@v4
         with: { name: offline-data, path: offline-data }
       - name: Full installer (with offline data)
         shell: pwsh
         run: |
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.signing-key-check.outputs.version }}" /DFull "/DDataDir=..\offline-data" installer\windows.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.signing-key-check.outputs.version }}" "/DArch=${{ matrix.arch }}" /DFull "/DDataDir=..\offline-data" installer\windows.iss
           Get-ChildItem dist
       - uses: actions/upload-artifact@v4
-        with: { name: windows, path: dist/* }
+        with:
+          name: windows-${{ matrix.arch }}
+          path: dist/*
 
   macos:
     needs: [signing-key-check, full-data]
@@ -309,7 +322,7 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-          pattern: "{android,android-legacy,linux-*,windows,macos,ios}"
+          pattern: "{android,android-legacy,linux-*,windows-*,macos,ios}"
       - run: ls -la dist
       - uses: softprops/action-gh-release@v2
         with:

@@ -1,5 +1,8 @@
 // ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
+import 'dart:io';
+
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'app_state.dart';
@@ -8,6 +11,18 @@ import 'ui/home.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Diagnostics: UT_PERF=1 prints every frame that takes longer than 16 ms.
+  if (Platform.environment['UT_PERF'] == '1') {
+    SchedulerBinding.instance.addTimingsCallback((timings) {
+      for (final t in timings) {
+        final ms = t.totalSpan.inMicroseconds / 1000;
+        if (ms > 16) {
+          stdout.writeln('slow frame: total ${ms.toStringAsFixed(1)} ms, '
+              'build ${(t.buildDuration.inMicroseconds / 1000).toStringAsFixed(1)} ms');
+        }
+      }
+    });
+  }
   final state = await AppState.init();
   runApp(UniversalTranslatorApp(state: state));
 }

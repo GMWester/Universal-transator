@@ -3,7 +3,7 @@
 An offline translator, dictionary, grammar reference and character chart for all languages, with
 speech from [IPAReader](https://github.com/GMWester/IPAReader).
 
-One Flutter code base builds for **Windows, Linux, macOS, iOS, Android phones and tablets, Android TV
+One Flutter code base builds for **Windows (x64 and ARM64), Linux, macOS, iOS, Android phones and tablets, Android TV
 and Android XR**. The Android builds cover new and old devices: the main APK supports Android 7.0 and
 later (API 24+), and a separate *legacy* APK supports Android 5.0–6.0 (API 21–23), which includes older
 Android TV boxes.
@@ -99,7 +99,7 @@ flutter run                      # or: flutter build apk / windows / macos / lin
    manually. It builds these files and attaches them to the GitHub Release:
    * `universal-translator-android.apk` and `.aab`
    * `universal-translator-android-legacy.apk`
-   * `universal-translator-windows-x64-setup.exe`, `-full-setup.exe` and `-portable.zip`
+   * `universal-translator-windows-x64-setup.exe` / `-arm64-setup.exe`, their `-full-setup.exe` variants and `-portable.zip`
    * `universal-translator-macos.zip` and `-macos-full.zip`
    * `universal-translator-linux-x86_64.AppImage`, `-aarch64.AppImage`, their `-full` variants and the `.tar.gz` bundles
    * `universal-translator-ios-unsigned.ipa`

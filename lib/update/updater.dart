@@ -45,7 +45,10 @@ class Updater extends ChangeNotifier {
     if (Platform.isAndroid) {
       return kLegacyBuild ? 'universal-translator-android-legacy.apk' : 'universal-translator-android.apk';
     }
-    if (Platform.isWindows) return 'universal-translator-windows-x64-setup.exe';
+    if (Platform.isWindows) {
+      final arm = Platform.version.contains('windows_arm64');
+      return 'universal-translator-windows-${arm ? 'arm64' : 'x64'}-setup.exe';
+    }
     if (Platform.isMacOS) return 'universal-translator-macos.zip';
     if (Platform.isLinux) {
       final arm = Platform.version.contains('arm64');

@@ -2,8 +2,11 @@
 #ifndef AppVersion
   #define AppVersion "1.0.0"
 #endif
+#ifndef Arch
+  #define Arch "x64"
+#endif
 #ifndef SourceDir
-  #define SourceDir "..\build\windows\x64\runner\Release"
+  #define SourceDir "..\build\windows\" + Arch + "\runner\Release"
 #endif
 
 [Setup]
@@ -16,10 +19,10 @@ DefaultDirName={localappdata}\Programs\Universal Translator
 DefaultGroupName=Universal Translator
 PrivilegesRequired=lowest
 #ifdef Full
-OutputBaseFilename=universal-translator-windows-x64-full-setup
+OutputBaseFilename=universal-translator-windows-{#Arch}-full-setup
 DiskSpanning=no
 #else
-OutputBaseFilename=universal-translator-windows-x64-setup
+OutputBaseFilename=universal-translator-windows-{#Arch}-setup
 #endif
 OutputDir=..\dist
 #ifdef Full
@@ -28,8 +31,13 @@ Compression=lzma2/normal
 Compression=lzma2/max
 #endif
 SolidCompression=yes
+#if Arch == "arm64"
+ArchitecturesAllowed=arm64
+ArchitecturesInstallIn64BitMode=arm64
+#else
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#endif
 CloseApplications=yes
 RestartApplications=yes
 UninstallDisplayIcon={app}\universal_translator.exe

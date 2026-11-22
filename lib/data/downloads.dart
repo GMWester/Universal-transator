@@ -4,52 +4,92 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
+import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
 
 typedef Progress = void Function(int received, int total);
 
-/// Streams [url] to [dest] (through a .part file), optionally checking SHA-256.
-Future<File> downloadFile(String url, File dest,
-    {String? sha256Hex, Progress? onProgress, http.Client? client}) async {
-  final c = client ?? http.Client();
+/// Downloads [url] to [dest] on a background isolate (network reading, file
+/// writing and the SHA-256 check never touch the UI thread). Progress is
+/// reported about 6 times per second.
+Future<File> downloadFile(String url, File dest, {String? sha256Hex, Progress? onProgress}) async {
+  final port = ReceivePort();
+  final done = Completer<File>();
+  final sub = port.listen((m) {
+    if (done.isCompleted) return;
+    if (m is List && m.length == 2 && m[0] is int) {
+      onProgress?.call(m[0] as int, m[1] as int);
+    } else if (m == 'ok') {
+      done.complete(dest);
+    } else if (m is String) {
+      done.completeError(HttpException(m));
+    } else if (m is List) {
+      done.completeError(StateError('download failed: ${m.first}')); // uncaught isolate error
+    } else if (m == null) {
+      done.completeError(StateError('download stopped')); // isolate exited early
+    }
+  });
   try {
-    final req = http.Request('GET', Uri.parse(url))
-      ..headers['User-Agent'] = 'UniversalTranslator-App';
-    final res = await c.send(req);
-    if (res.statusCode != 200) {
-      throw HttpException('HTTP ${res.statusCode} for $url');
-    }
-    await dest.parent.create(recursive: true);
-    final part = File('${dest.path}.part');
-    final sink = part.openWrite();
-    final total = res.contentLength ?? 0;
-    var got = 0;
-    try {
-      var last = 0;
-      final clock = Stopwatch()..start();
-      await for (final chunk in res.stream) {
-        sink.add(chunk);
-        got += chunk.length;
-        // report at most ~6 times per second
-        if (clock.elapsedMilliseconds - last >= 160) {
-          last = clock.elapsedMilliseconds;
-          onProgress?.call(got, total);
-        }
-      }
-      onProgress?.call(got, total);
-    } finally {
-      await sink.close();
-    }
-    // Checksum on a background isolate so the UI stays smooth.
-    if (sha256Hex != null && sha256Hex.isNotEmpty &&
-        await fileSha256(part.path) != sha256Hex.toLowerCase()) {
-      await part.delete();
-      throw const FormatException('Checksum mismatch, download corrupted');
-    }
-    if (await dest.exists()) await dest.delete();
-    return await part.rename(dest.path);
+    await Isolate.spawn(_downloadWorker, [url, dest.path, sha256Hex ?? '', port.sendPort],
+        onError: port.sendPort, onExit: port.sendPort);
+    return await done.future;
   } finally {
-    if (client == null) c.close();
+    await sub.cancel();
+    port.close();
+  }
+}
+
+Future<void> _downloadWorker(List args) async {
+  final url = args[0] as String, destPath = args[1] as String, want = args[2] as String;
+  final out = args[3] as SendPort;
+  final client = HttpClient()
+    ..userAgent = 'UniversalTranslator-App'
+    ..connectionTimeout = const Duration(seconds: 30);
+  final part = File('$destPath.part');
+  try {
+    await part.parent.create(recursive: true);
+    final req = await client.getUrl(Uri.parse(url));
+    final res = await req.close(); // follows GitHub's redirect to its download CDN
+    if (res.statusCode != 200) {
+      out.send('HTTP ${res.statusCode} for $url');
+      return;
+    }
+    final total = res.contentLength > 0 ? res.contentLength : 0;
+    final raf = await part.open(mode: FileMode.write);
+    final digestSink = _DigestSink();
+    final hasher = sha256.startChunkedConversion(digestSink);
+    var got = 0, last = 0;
+    final clock = Stopwatch()..start();
+    // Buffer writes into ~1 MB blocks.
+    final buf = BytesBuilder(copy: false);
+    await for (final chunk in res) {
+      buf.add(chunk);
+      hasher.add(chunk);
+      got += chunk.length;
+      if (buf.length >= 1 << 20) await raf.writeFrom(buf.takeBytes());
+      if (clock.elapsedMilliseconds - last >= 160) {
+        last = clock.elapsedMilliseconds;
+        out.send([got, total]);
+      }
+    }
+    if (buf.length > 0) await raf.writeFrom(buf.takeBytes());
+    await raf.close();
+    hasher.close();
+    out.send([got, total]);
+    if (want.isNotEmpty && digestSink.value.toString() != want.toLowerCase()) {
+      await part.delete();
+      out.send('Checksum mismatch, download corrupted');
+      return;
+    }
+    final dest = File(destPath);
+    if (await dest.exists()) await dest.delete();
+    await part.rename(destPath);
+    out.send('ok');
+  } catch (e) {
+    out.send('$e');
+  } finally {
+    client.close(force: true);
   }
 }
 

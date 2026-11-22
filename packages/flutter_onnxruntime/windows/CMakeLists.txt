@@ -62,7 +62,9 @@ if(NOT USE_SYSTEM_ONNXRUNTIME)
   message(STATUS "ONNX Runtime version set to: ${ONNXRUNTIME_VERSION}")
 
   # Determine architecture for download URL
-  if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+  if(CMAKE_GENERATOR_PLATFORM MATCHES "^[Aa][Rr][Mm]64$" OR CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|arm64|aarch64)$")
+    set(ONNXRUNTIME_ARCH "arm64")
+  elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(ONNXRUNTIME_ARCH "x64")
   else()
     set(ONNXRUNTIME_ARCH "x86")
