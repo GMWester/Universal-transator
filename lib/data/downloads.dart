@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
@@ -23,21 +24,25 @@ Future<File> downloadFile(String url, File dest,
     final sink = part.openWrite();
     final total = res.contentLength ?? 0;
     var got = 0;
-    final digestSink = _DigestSink();
-    final hasher = sha256.startChunkedConversion(digestSink);
     try {
+      var last = 0;
+      final clock = Stopwatch()..start();
       await for (final chunk in res.stream) {
         sink.add(chunk);
-        hasher.add(chunk);
         got += chunk.length;
-        onProgress?.call(got, total);
+        // report at most ~6 times per second
+        if (clock.elapsedMilliseconds - last >= 160) {
+          last = clock.elapsedMilliseconds;
+          onProgress?.call(got, total);
+        }
       }
+      onProgress?.call(got, total);
     } finally {
       await sink.close();
-      hasher.close();
     }
+    // Checksum on a background isolate so the UI stays smooth.
     if (sha256Hex != null && sha256Hex.isNotEmpty &&
-        digestSink.value.toString() != sha256Hex.toLowerCase()) {
+        await fileSha256(part.path) != sha256Hex.toLowerCase()) {
       await part.delete();
       throw const FormatException('Checksum mismatch, download corrupted');
     }
@@ -48,11 +53,26 @@ Future<File> downloadFile(String url, File dest,
   }
 }
 
-Future<void> gunzipFile(File src, File dest) async {
-  final tmp = File('${dest.path}.tmp');
-  await src.openRead().transform(gzip.decoder).pipe(tmp.openWrite());
-  if (await dest.exists()) await dest.delete();
-  await tmp.rename(dest.path);
+Future<String> fileSha256(String path) => Isolate.run(() async {
+      final out = _DigestSink();
+      final h = sha256.startChunkedConversion(out);
+      await for (final c in File(path).openRead()) {
+        h.add(c);
+      }
+      h.close();
+      return out.value.toString();
+    });
+
+/// Unpacks a .gz file on a background isolate.
+Future<void> gunzipFile(File src, File dest) {
+  final s = src.path, d = dest.path;
+  return Isolate.run(() async {
+    final tmp = File('$d.tmp');
+    await File(s).openRead().transform(gzip.decoder).pipe(tmp.openWrite());
+    final out = File(d);
+    if (await out.exists()) await out.delete();
+    await tmp.rename(d);
+  });
 }
 
 Future<dynamic> getJson(String url) async {

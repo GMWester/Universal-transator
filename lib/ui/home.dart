@@ -19,6 +19,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int index = 0;
+  final Set<int> _visited = {0}; // pages are built the first time they are opened
 
   @override
   void initState() {
@@ -30,6 +31,11 @@ class _HomePageState extends State<HomePage> {
       Future.delayed(const Duration(seconds: 3), _autoUpdateCheck);
     }
   }
+
+  void _go(int i) => setState(() {
+        index = i;
+        _visited.add(i);
+      });
 
   /// First start: offer to pick which dictionaries to download.
   Future<void> _firstRunPrompt() async {
@@ -45,7 +51,7 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-    if (go == true && mounted) setState(() => index = 4);
+    if (go == true && mounted) _go(4);
   }
 
   Future<void> _autoUpdateCheck() async {
@@ -83,7 +89,9 @@ class _HomePageState extends State<HomePage> {
     // Rebuild every page when the app language changes.
     final body = KeyedSubtree(
       key: ValueKey(app.settings.appLanguage),
-      child: IndexedStack(index: index, children: pages),
+      child: IndexedStack(index: index, children: [
+        for (var i = 0; i < pages.length; i++) _visited.contains(i) ? pages[i] : const SizedBox.shrink(),
+      ]),
     );
     if (wide) {
       return Scaffold(
@@ -92,7 +100,7 @@ class _HomePageState extends State<HomePage> {
             NavigationRail(
               selectedIndex: index,
               labelType: NavigationRailLabelType.all,
-              onDestinationSelected: (i) => setState(() => index = i),
+              onDestinationSelected: _go,
               destinations: [
                 for (final it in items)
                   NavigationRailDestination(icon: Icon(it.$1), label: Text(it.$2)),
@@ -109,7 +117,7 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-        onDestinationSelected: (i) => setState(() => index = i),
+        onDestinationSelected: _go,
         destinations: [for (final it in items) NavigationDestination(icon: Icon(it.$1), label: it.$2)],
       ),
     );

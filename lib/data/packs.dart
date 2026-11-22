@@ -138,6 +138,17 @@ class PackManager extends ChangeNotifier implements PackSource {
     return null;
   }
 
+  DateTime _lastNotify = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Download progress arrives for every network chunk; redraw at most ~6x/s.
+  void _notifyProgress() {
+    final now = DateTime.now();
+    if (now.difference(_lastNotify).inMilliseconds >= 160) {
+      _lastNotify = now;
+      notifyListeners();
+    }
+  }
+
   Future<void> install(PackInfo p) async {
     if (active.containsKey(p.id)) return;
     final st = active[p.id] = DownloadState(p.file);
@@ -148,7 +159,7 @@ class PackManager extends ChangeNotifier implements PackSource {
           onProgress: (r, t) {
         st.received = r;
         st.total = t == 0 ? p.size : t;
-        notifyListeners();
+        _notifyProgress();
       });
       _close(p.id);
       await gunzipFile(gz, File(_dbPath(p.id)));

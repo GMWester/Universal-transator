@@ -17,6 +17,7 @@ class _TranslatePageState extends State<TranslatePage> {
   late String from = app.settings.lastFrom, to = app.settings.lastTo;
   final input = TextEditingController();
   TranslationResult? result;
+  String resultIpa = '';
   bool busy = false;
   String? error;
 
@@ -27,7 +28,11 @@ class _TranslatePageState extends State<TranslatePage> {
     });
     try {
       final r = await app.translator.translate(input.text, from, to);
-      setState(() => result = r);
+      final ipa = app.speech.textToIpa(to, r.text);
+      setState(() {
+        result = r;
+        resultIpa = ipa;
+      });
     } catch (e) {
       setState(() => error = '$e');
     } finally {
@@ -139,7 +144,7 @@ class _TranslatePageState extends State<TranslatePage> {
                     ]),
                     if (result!.method == 'dictionary')
                       Text(tr('approximate'), style: Theme.of(context).textTheme.bodySmall),
-                    SelectableText('IPA: ${app.speech.textToIpa(to, result!.text)}',
+                    SelectableText('IPA: $resultIpa',
                         style: Theme.of(context).textTheme.bodySmall),
                   ]),
                 ),

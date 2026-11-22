@@ -45,15 +45,35 @@ class _DownloadsPageState extends State<DownloadsPage> {
     if (mounted) setState(() => loading = false);
   }
 
-  /// language code -> pack in the current edition
+  // Cached: language code -> pack, and the sorted language list. Rebuilt
+  // only when the edition, its manifest or the app language changes.
+  Object? _cacheKey;
+  Map<String, PackInfo> _lp = const {};
+  List<String> _sortedLangs = const [];
+
   Map<String, PackInfo> get _langPacks {
-    final out = <String, PackInfo>{};
-    for (final p in app.packs.manifests[edition] ?? const <PackInfo>[]) {
-      for (final l in p.langs.keys) {
-        out[l] = p;
+    final packs = app.packs.manifests[edition];
+    final key = (edition, identityHashCode(packs), app.langs.locale);
+    if (key != _cacheKey) {
+      final out = <String, PackInfo>{};
+      for (final p in packs ?? const <PackInfo>[]) {
+        for (final l in p.langs.keys) {
+          out[l] = p;
+        }
       }
+      final names = {for (final l in out.keys) l: foldKey(app.langs.name(l))};
+      final langs = out.keys.toList()
+        ..sort((a, b) {
+          final ea = out[a]!.entries[a] ?? 0, eb = out[b]!.entries[b] ?? 0;
+          if ((ea >= 1000) != (eb >= 1000)) return ea >= 1000 ? -1 : 1;
+          if (ea >= 1000 && ea != eb) return eb.compareTo(ea);
+          return names[a]!.compareTo(names[b]!);
+        });
+      _lp = out;
+      _sortedLangs = langs;
+      _cacheKey = key;
     }
-    return out;
+    return _lp;
   }
 
   Set<PackInfo> _packsFor(Iterable<String> langs) {
@@ -78,7 +98,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
         animation: Listenable.merge([app.packs, app.langs]),
         builder: (context, _) {
           final lp = _langPacks;
-          var langs = lp.keys.toList();
+          var langs = _sortedLangs;
           if (onlyInstalled) langs = langs.where((l) => app.packs.isInstalled(lp[l]!.id)).toList();
           if (filter.isNotEmpty) {
             final f = foldKey(filter);
@@ -89,13 +109,6 @@ class _DownloadsPageState extends State<DownloadsPage> {
                     l == f)
                 .toList();
           }
-          // biggest dictionaries first, then alphabetical
-          langs.sort((a, b) {
-            final ea = lp[a]!.entries[a] ?? 0, eb = lp[b]!.entries[b] ?? 0;
-            if ((ea >= 1000) != (eb >= 1000)) return ea >= 1000 ? -1 : 1;
-            if (ea >= 1000 && ea != eb) return eb.compareTo(ea);
-            return foldKey(app.langs.name(a)).compareTo(foldKey(app.langs.name(b)));
-          });
           final todo = _packsFor(selected);
           final todoBytes = todo.fold<int>(0, (n, p) => n + p.size);
           final th = Theme.of(context).textTheme;
