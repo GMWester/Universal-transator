@@ -16,7 +16,7 @@ add_library(ipareader_ffi SHARED
   "${IPR_ROOT}/src/tune.c"
 )
 target_include_directories(ipareader_ffi PRIVATE "${IPR_ROOT}/include" "${IPR_ROOT}/src")
-target_compile_definitions(ipareader_ffi PRIVATE IPR_BUILD_DLL _CRT_SECURE_NO_WARNINGS)
+target_compile_definitions(ipareader_ffi PRIVATE IPR_BUILD_DLL _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
 set_target_properties(ipareader_ffi PROPERTIES
   OUTPUT_NAME "ipareader_ffi"
   C_STANDARD 11

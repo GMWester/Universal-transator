@@ -40,3 +40,5 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Run]
 Filename: "{app}\universal_translator.exe"; Description: "{cm:LaunchProgram,Universal Translator}"; Flags: nowait postinstall skipifsilent
+; Relaunch after a silent in-app update.
+Filename: "{app}\universal_translator.exe"; Flags: nowait; Check: WizardSilent
