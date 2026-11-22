@@ -5,13 +5,11 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
+      - run: |
           set +e
-          echo "== download.onnxruntime.ai"; curl -sv -o /dev/null https://download.onnxruntime.ai/pod-archive-onnxruntime-c-1.28.0.zip 2>&1 | grep -iE "subject|issuer|expire|SSL|HTTP/" | head -20
-          echo "== GitHub release assets v1.28.0"; gh release view v1.28.0 -R microsoft/onnxruntime --json assets -q '.assets[].name' | head -60
-          echo "== CMake URL check"; curl -sIL -o /dev/null -w "%{http_code}\n" https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-linux-x64-1.28.0.tgz
-          echo "== NuGet"; curl -fsSL -o ort.nupkg https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/1.28.0/microsoft.ml.onnxruntime.1.28.0.nupkg && sha256sum ort.nupkg && unzip -l ort.nupkg | grep -vE "\.xml|_rels|psmdcp" | head -80
-          unzip -o -q ort.nupkg 'runtimes/ios/*' -d x && ls -R x | head -40
-          (cd x/runtimes/ios/native 2>/dev/null && unzip -q -o *.zip && find . -maxdepth 3 | head -30)
+          for n in onnxruntime-c onnxruntime-objc; do
+            s=$(python3 -c "import hashlib;h=hashlib.md5(b'$n').hexdigest();print('/'.join(h[:3]))")
+            echo "== $n"; curl -fsSL "https://cdn.cocoapods.org/Specs/$s/$n/1.28.0/$n.podspec.json"; echo
+          done
+          echo "== tags"; git ls-remote --tags https://github.com/microsoft/onnxruntime | grep -E "v1\.2[6-9]" | head
+          echo "== releases"; curl -fsSL "https://api.github.com/repos/microsoft/onnxruntime/releases?per_page=5" | python3 -c "import json,sys;[print(r['tag_name'],[a['name'] for a in r['assets']][:40]) for r in json.load(sys.stdin)]"
