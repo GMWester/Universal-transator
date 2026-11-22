@@ -48,6 +48,13 @@ model and the largest dictionaries (English first), up to GitHub's 2 GB per-file
 offline right after installation. More languages can still be added from the Offline data page. A full
 installation keeps updating to the full variant.
 
+**Portable mode.** If a file named `portable.txt` is next to the program, the app keeps everything
+(dictionaries, translation models, settings, temporary files) in a `user-data` folder beside it and
+writes nothing to the computer, so the folder can live on a USB stick. The Windows portable zip
+already contains `portable.txt`. The Windows installers have a *Portable mode* checkbox that installs
+into the chosen folder without an uninstaller, registry entries or shortcuts. Portable copies update
+by replacing the program files from the portable zip, and they keep `user-data`.
+
 **Updates from inside the app.** The app checks GitHub Releases at startup, and you can also check
 from Settings.
 

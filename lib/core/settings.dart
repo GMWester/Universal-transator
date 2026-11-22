@@ -1,16 +1,40 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'portable.dart';
+
 enum AppTheme { light, dark, oled }
 
-/// User preferences, persisted with shared_preferences.
+/// Key/value storage: shared_preferences normally, a JSON file beside the
+/// program in portable mode.
+class _Store {
+  _Store(this._sp, this._json);
+  final SharedPreferences? _sp;
+  final JsonPrefs? _json;
+  String? getString(String k) => _sp != null ? _sp.getString(k) : _json!.get(k) as String?;
+  double? getDouble(String k) => _sp != null ? _sp.getDouble(k) : (_json!.get(k) as num?)?.toDouble();
+  bool? getBool(String k) => _sp != null ? _sp.getBool(k) : _json!.get(k) as bool?;
+  void setString(String k, String v) => _sp != null ? _sp.setString(k, v) : _json!.set(k, v);
+  void setDouble(String k, double v) => _sp != null ? _sp.setDouble(k, v) : _json!.set(k, v);
+  void setBool(String k, bool v) => _sp != null ? _sp.setBool(k, v) : _json!.set(k, v);
+  void remove(String k) => _sp != null ? _sp.remove(k) : _json!.set(k, null);
+}
+
+/// User preferences.
 class Settings extends ChangeNotifier {
   Settings._(this._p);
 
-  static Future<Settings> load() async =>
-      Settings._(await SharedPreferences.getInstance());
+  static Future<Settings> load() async {
+    if (Portable.enabled) {
+      final f = File('${Portable.dataDir.path}${Platform.pathSeparator}settings.json');
+      return Settings._(_Store(null, await JsonPrefs.open(f)));
+    }
+    return Settings._(_Store(await SharedPreferences.getInstance(), null));
+  }
 
-  final SharedPreferences _p;
+  final _Store _p;
 
   AppTheme get theme =>
       AppTheme.values.asNameMap()[_p.getString('theme') ?? ''] ?? AppTheme.dark;

@@ -246,12 +246,14 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.signing-key-check.outputs.version }}" "/DArch=${{ matrix.arch }}" installer\windows.iss
+          "This file makes Universal Translator portable: all data and settings stay in the user-data folder next to it." | Out-File build\windows\${{ matrix.arch }}\runner\Release\portable.txt -Encoding utf8
           Compress-Archive -Path build\windows\${{ matrix.arch }}\runner\Release\* -DestinationPath dist\universal-translator-windows-${{ matrix.arch }}-portable.zip
       - uses: actions/download-artifact@v4
         with: { name: offline-data, path: offline-data }
       - name: Full installer (with offline data)
         shell: pwsh
         run: |
+          Remove-Item build\windows\${{ matrix.arch }}\runner\Release\portable.txt -ErrorAction SilentlyContinue
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.signing-key-check.outputs.version }}" "/DArch=${{ matrix.arch }}" /DFull "/DDataDir=..\offline-data" installer\windows.iss
           Get-ChildItem dist
       - uses: actions/upload-artifact@v4

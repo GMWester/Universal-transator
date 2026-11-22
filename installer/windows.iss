@@ -41,6 +41,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=yes
 UninstallDisplayIcon={app}\universal_translator.exe
+; Portable mode: no uninstaller, no registry entries, no shortcuts
+Uninstallable=not IsPortable
+CreateUninstallRegKey=not IsPortable
 SetupIconFile=..\windows\runner\resources\app_icon.ico
 WizardStyle=modern
 MinVersion=10.0
@@ -53,13 +56,24 @@ Source: "{#DataDir}\*"; DestDir: "{app}\offline-data"; Flags: ignoreversion recu
 #endif
 
 [Icons]
-Name: "{group}\Universal Translator"; Filename: "{app}\universal_translator.exe"
-Name: "{autodesktop}\Universal Translator"; Filename: "{app}\universal_translator.exe"; Tasks: desktopicon
+Name: "{group}\Universal Translator"; Filename: "{app}\universal_translator.exe"; Check: not IsPortable
+Name: "{autodesktop}\Universal Translator"; Filename: "{app}\universal_translator.exe"; Tasks: desktopicon; Check: not IsPortable
 
 [Tasks]
+Name: "portable"; Description: "Portable mode: keep dictionaries, models and settings in this folder (for USB sticks; no uninstaller or shortcuts)"; Flags: unchecked
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+
+[INI]
+; The app switches to portable mode when portable.txt exists next to it.
+Filename: "{app}\portable.txt"; Section: "UniversalTranslator"; Key: "portable"; String: "1"; Tasks: portable
 
 [Run]
 Filename: "{app}\universal_translator.exe"; Description: "{cm:LaunchProgram,Universal Translator}"; Flags: nowait postinstall skipifsilent
 ; Relaunch after a silent in-app update.
 Filename: "{app}\universal_translator.exe"; Flags: nowait; Check: WizardSilent
+
+[Code]
+function IsPortable: Boolean;
+begin
+  Result := WizardIsTaskSelected('portable');
+end;

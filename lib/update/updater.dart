@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/config.dart';
 import '../core/paths.dart';
+import '../core/portable.dart';
 import '../data/downloads.dart';
 
 /// Set for the Android build that supports old devices (Android 5/6).
@@ -50,7 +51,8 @@ class Updater extends ChangeNotifier {
     }
     if (Platform.isWindows) {
       final arm = Platform.version.contains('windows_arm64');
-      return 'universal-translator-windows-${arm ? 'arm64' : 'x64'}-setup.exe';
+      final kind = Portable.enabled ? 'portable.zip' : 'setup.exe';
+      return 'universal-translator-windows-${arm ? 'arm64' : 'x64'}-$kind';
     }
     if (Platform.isMacOS) return 'universal-translator-macos.zip';
     if (Platform.isLinux) {
@@ -147,6 +149,8 @@ class Updater extends ChangeNotifier {
       notifyListeners();
       if (Platform.isAndroid) {
         await _ch.invokeMethod('installApk', {'path': file.path});
+      } else if (Platform.isWindows && Portable.enabled) {
+        await _installWindowsPortable(file);
       } else if (Platform.isWindows) {
         await Process.start(file.path, ['/SILENT', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'],
             mode: ProcessStartMode.detached);
@@ -165,6 +169,28 @@ class Updater extends ChangeNotifier {
       progress = null;
       notifyListeners();
     }
+  }
+
+  /// Portable Windows copy: unpack the new portable zip and copy it over the
+  /// program folder once the app has closed. The user-data folder is kept.
+  Future<void> _installWindowsPortable(File zip) async {
+    final appDir = Portable.appDir!.path;
+    final tmp = Directory('${zip.parent.path}\\unzipped');
+    if (await tmp.exists()) await tmp.delete(recursive: true);
+    final r = await Process.run('powershell', [
+      '-NoProfile',
+      '-Command',
+      'Expand-Archive -LiteralPath "${zip.path}" -DestinationPath "${tmp.path}" -Force'
+    ]);
+    if (r.exitCode != 0) throw StateError('unzip failed: ${r.stderr}');
+    final script = File('${zip.parent.path}\\update.cmd');
+    await script.writeAsString('@echo off\r\n'
+        ':wait\r\n'
+        'tasklist /FI "PID eq $pid" 2>NUL | find "$pid" >NUL && (timeout /t 1 /nobreak >NUL & goto wait)\r\n'
+        'robocopy "${tmp.path}" "$appDir" /E /NFL /NDL /NJH /NJS /XD user-data >NUL\r\n'
+        'start "" "${Platform.resolvedExecutable}"\r\n');
+    await Process.start('cmd', ['/c', script.path], mode: ProcessStartMode.detached);
+    exit(0);
   }
 
   Future<void> _installMac(File zip) async {

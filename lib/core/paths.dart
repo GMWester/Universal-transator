@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'portable.dart';
+
 /// Where downloaded data lives. Everything under [dataDir] is used offline.
 class AppPaths {
   AppPaths._(this.dataDir, this.tempDir);
@@ -9,6 +11,14 @@ class AppPaths {
   static late AppPaths instance;
 
   static Future<AppPaths> init() async {
+    if (Portable.enabled) {
+      // Everything stays in <program folder>/user-data.
+      final base = Portable.dataDir;
+      final sep = Platform.pathSeparator;
+      final d = Directory('${base.path}${sep}offline')..createSync(recursive: true);
+      final t = Directory('${base.path}${sep}tmp')..createSync(recursive: true);
+      return instance = AppPaths._(d, t);
+    }
     final support = await getApplicationSupportDirectory();
     final tmp = await getTemporaryDirectory();
     final d = Directory('${support.path}${Platform.pathSeparator}offline');
