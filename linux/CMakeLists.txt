@@ -72,6 +72,8 @@ set_target_properties(${BINARY_NAME}
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
+# ONNX Runtime used by flutter_onnxruntime (same version as Android/iOS).
+set(ONNXRUNTIME_VERSION "1.28.0")
 include(flutter/generated_plugins.cmake)
 
 

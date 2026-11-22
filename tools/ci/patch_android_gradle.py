@@ -36,5 +36,7 @@ android {''', 1)
     }
 
     buildTypes {''', 1)
+s = s.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 36')
+s = s.replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "27.0.12077973"')
 open(p, 'w').write(s)
 print('patched', p)

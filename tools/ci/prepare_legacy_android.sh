@@ -20,4 +20,13 @@ AGP=$(grep -oE 'com.android.application"\) version "[0-9.]+' "$DST/android/setti
 if [ -n "$AGP" ]; then
   sed -i -E "s/com.android.tools.build:gradle:[0-9.]+/com.android.tools.build:gradle:$AGP/" "$DST/packages/ipareader_ffi/android/build.gradle"
 fi
+# ONNX Runtime 1.21+ requires Android 7.0; 1.20 is the newest that runs on Android 5.0+.
+cat >> "$DST/android/build.gradle.kts" <<'GRADLE'
+
+subprojects {
+    configurations.all {
+        resolutionStrategy.force("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
+    }
+}
+GRADLE
 echo "legacy project ready in $DST (AGP $AGP)"
