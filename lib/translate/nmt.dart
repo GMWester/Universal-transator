@@ -55,7 +55,7 @@ class NmtModel {
   static bool isInstalled(ModelSpec s) => _required.every((r) => File(_local(s, r)).existsSync());
 
   /// Downloads all model files (once). Afterwards translation works offline.
-  static Future<void> download(ModelSpec s, Progress onProgress) async {
+  static Future<void> download(ModelSpec s, Progress onProgress, {CancelToken? cancel}) async {
     final roles = s.files.keys.toList();
     var done = 0;
     for (final role in roles) {
@@ -70,10 +70,13 @@ class NmtModel {
       ];
       for (final url in urls) {
         try {
-          await downloadFile(url, File(_file(_downloadDir(s), role)),
+          if (cancel?.cancelled == true) throw DownloadCancelled();
+          await downloadFile(url, File(_file(_downloadDir(s), role)), cancel: cancel,
               onProgress: (r, t) => onProgress(done * 1000 + (t > 0 ? r * 1000 ~/ t : 0), roles.length * 1000));
           ok = true;
           break;
+        } on DownloadCancelled {
+          rethrow;
         } catch (e) {
           lastErr = e;
         }

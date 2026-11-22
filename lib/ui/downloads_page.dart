@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/config.dart';
+import '../data/downloads.dart';
 import '../data/normalize.dart';
 import '../data/packs.dart';
 import '../translate/nmt.dart';
@@ -25,6 +26,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
   bool onlyInstalled = false;
   final Set<String> selected = {}; // language codes in [edition]
   final Map<String, double?> modelProgress = {};
+  final Map<String, CancelToken> modelCancel = {};
 
   @override
   void initState() {
@@ -264,7 +266,10 @@ class _DownloadsPageState extends State<DownloadsPage> {
               ? Text(st.error!, style: TextStyle(color: Theme.of(context).colorScheme.error))
               : LinearProgressIndicator(value: st.fraction))
           : Text(sub),
-      secondary: inst && !bundled
+      secondary: st != null && st.error == null
+          ? IconButton(
+              tooltip: tr('cancel'), icon: const Icon(Icons.close), onPressed: () => app.packs.cancel(p.id))
+          : inst && !bundled
           ? IconButton(
               tooltip: tr('remove'), icon: const Icon(Icons.delete_outline), onPressed: () => app.packs.remove(p.id))
           : Icon(inst ? Icons.offline_pin : Icons.cloud_outlined),
@@ -285,8 +290,13 @@ class _DownloadsPageState extends State<DownloadsPage> {
             ? LinearProgressIndicator(value: prog)
             : Text('${inst ? (bundled ? tr('includedInInstaller') : tr('installed')) : '~${m.approxSizeMB} MB'} · '
                 '${tr('license')}: ${m.license}'),
-        trailing: busy || bundled
+        trailing: bundled
             ? null
+            : busy
+            ? IconButton(
+                tooltip: tr('cancel'),
+                icon: const Icon(Icons.close),
+                onPressed: () => modelCancel[m.id]?.cancel())
             : inst
                 ? IconButton(
                     tooltip: tr('deleteModel'),
@@ -300,12 +310,15 @@ class _DownloadsPageState extends State<DownloadsPage> {
                     tooltip: tr('downloadModel'),
                     icon: const Icon(Icons.download),
                     onPressed: () async {
+                      final token = modelCancel[m.id] = CancelToken();
                       setState(() => modelProgress[m.id] = null);
                       try {
                         await NmtModel.download(m, (r, t) {
                           if (mounted) setState(() => modelProgress[m.id] = t > 0 ? r / t : null);
-                        });
+                        }, cancel: token);
                         app.settings.translationModel = m.id;
+                      } on DownloadCancelled {
+                        await NmtModel.delete(m);
                       } catch (e) {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));

@@ -99,7 +99,12 @@ class SettingsPage extends StatelessWidget {
                   label: Text('${tr('install')} ${app.updater.available!.version}'),
                 ),
             ]),
-            if (app.updater.progress != null) LinearProgressIndicator(value: app.updater.progress),
+            if (app.updater.progress != null)
+              Row(children: [
+                Expanded(child: LinearProgressIndicator(value: app.updater.progress)),
+                IconButton(
+                    tooltip: tr('cancel'), icon: const Icon(Icons.close), onPressed: app.updater.cancelDownload),
+              ]),
             if (app.updater.status == 'upToDate') Text(tr('upToDate')),
             if (app.updater.status?.startsWith('error:') == true)
               Text(app.updater.status!.substring(6), style: TextStyle(color: Theme.of(context).colorScheme.error)),

@@ -29,6 +29,7 @@ class PackInfo {
 class DownloadState {
   DownloadState(this.label);
   final String label;
+  final CancelToken cancel = CancelToken();
   int received = 0, total = 0;
   String? error;
   double? get fraction => total > 0 ? received / total : null;
@@ -155,12 +156,13 @@ class PackManager extends ChangeNotifier implements PackSource {
     notifyListeners();
     final gz = File('${AppPaths.instance.packsDir.path}${Platform.pathSeparator}${p.file}');
     try {
-      await downloadFile(AppConfig.instance.dataAssetUrl(p.edition, p.file), gz, sha256Hex: p.sha256,
-          onProgress: (r, t) {
+      await downloadFile(AppConfig.instance.dataAssetUrl(p.edition, p.file), gz,
+          sha256Hex: p.sha256, cancel: st.cancel, onProgress: (r, t) {
         st.received = r;
         st.total = t == 0 ? p.size : t;
         _notifyProgress();
       });
+      if (st.cancel.cancelled) throw DownloadCancelled();
       _close(p.id);
       await gunzipFile(gz, File(_dbPath(p.id)));
       await gz.delete();
@@ -168,6 +170,9 @@ class PackManager extends ChangeNotifier implements PackSource {
       await _installedFile.writeAsString(jsonEncode(_installed));
       active.remove(p.id);
       _registerLanguages();
+    } on DownloadCancelled {
+      active.remove(p.id);
+      if (await gz.exists()) await gz.delete();
     } catch (e) {
       st.error = '$e';
       if (await gz.exists()) await gz.delete();
@@ -201,8 +206,15 @@ class PackManager extends ChangeNotifier implements PackSource {
     }
   }
 
+  /// Stops one download.
+  void cancel(String packId) => active[packId]?.cancel.cancel();
+
+  /// Stops the queue and every running download.
   void cancelBulk() {
     bulkRunning = false;
+    for (final s in active.values.toList()) {
+      s.cancel.cancel();
+    }
     notifyListeners();
   }
 

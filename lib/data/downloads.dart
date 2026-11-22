@@ -10,10 +10,28 @@ import 'package:http/http.dart' as http;
 
 typedef Progress = void Function(int received, int total);
 
+class DownloadCancelled implements Exception {
+  @override
+  String toString() => 'Download cancelled';
+}
+
+/// Lets the UI stop a running download.
+class CancelToken {
+  bool cancelled = false;
+  void Function()? _onCancel;
+  void cancel() {
+    if (cancelled) return;
+    cancelled = true;
+    _onCancel?.call();
+  }
+}
+
 /// Downloads [url] to [dest] on a background isolate (network reading, file
 /// writing and the SHA-256 check never touch the UI thread). Progress is
 /// reported about 6 times per second.
-Future<File> downloadFile(String url, File dest, {String? sha256Hex, Progress? onProgress}) async {
+Future<File> downloadFile(String url, File dest,
+    {String? sha256Hex, Progress? onProgress, CancelToken? cancel}) async {
+  if (cancel?.cancelled == true) throw DownloadCancelled();
   final port = ReceivePort();
   final done = Completer<File>();
   final sub = port.listen((m) {
@@ -31,10 +49,30 @@ Future<File> downloadFile(String url, File dest, {String? sha256Hex, Progress? o
     }
   });
   try {
-    await Isolate.spawn(_downloadWorker, [url, dest.path, sha256Hex ?? '', port.sendPort],
+    final iso = await Isolate.spawn(_downloadWorker, [url, dest.path, sha256Hex ?? '', port.sendPort],
         onError: port.sendPort, onExit: port.sendPort);
+    if (cancel != null) {
+      cancel._onCancel = () {
+        iso.kill(priority: Isolate.immediate);
+        if (!done.isCompleted) done.completeError(DownloadCancelled());
+      };
+      if (cancel.cancelled) cancel._onCancel!();
+    }
     return await done.future;
+  } on DownloadCancelled {
+    // remove the partial file
+    for (var i = 0; i < 10; i++) {
+      try {
+        final part = File('${dest.path}.part');
+        if (await part.exists()) await part.delete();
+        break;
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 200)); // Windows: file still open
+      }
+    }
+    rethrow;
   } finally {
+    cancel?._onCancel = null;
     await sub.cancel();
     port.close();
   }

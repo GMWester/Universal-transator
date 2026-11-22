@@ -201,7 +201,11 @@ class NeedsPack extends StatelessWidget {
               Text(tr('needDownload', [app.langs.name(lang)])),
               const SizedBox(height: 12),
               if (st != null) ...[
-                LinearProgressIndicator(value: st.fraction),
+                Row(children: [
+                  Expanded(child: LinearProgressIndicator(value: st.fraction)),
+                  IconButton(
+                      tooltip: tr('cancel'), icon: const Icon(Icons.close), onPressed: () => app.packs.cancel(p!.id)),
+                ]),
                 if (st.error != null) Text(st.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
               ] else
                 FilledButton.icon(

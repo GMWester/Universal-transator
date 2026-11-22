@@ -35,6 +35,9 @@ class Updater extends ChangeNotifier {
   bool checking = false;
   double? progress;
   String? status;
+  CancelToken? _cancel;
+
+  void cancelDownload() => _cancel?.cancel();
 
   Future<void> init() async {
     final p = await PackageInfo.fromPlatform();
@@ -135,7 +138,8 @@ class Updater extends ChangeNotifier {
     status = 'downloading';
     notifyListeners();
     try {
-      await downloadFile(r.assetUrl!, file, onProgress: (got, total) {
+      _cancel = CancelToken();
+      await downloadFile(r.assetUrl!, file, cancel: _cancel, onProgress: (got, total) {
         progress = total > 0 ? got / total : null;
         notifyListeners();
       });
@@ -152,9 +156,12 @@ class Updater extends ChangeNotifier {
       } else if (Platform.isLinux) {
         await _installLinux(file);
       }
+    } on DownloadCancelled {
+      status = null;
     } catch (e) {
       status = 'error:$e';
     } finally {
+      _cancel = null;
       progress = null;
       notifyListeners();
     }

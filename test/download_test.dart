@@ -25,4 +25,20 @@ void main() {
     // ignore: avoid_print
     print('30 MB in ${sw.elapsedMilliseconds} ms, ${updates.length} progress updates');
   });
+
+  test('cancel stops a running download and removes the partial file', () async {
+    if (server == null) {
+      markTestSkipped('set UT_TEST_SERVER to run');
+      return;
+    }
+    final dir = await Directory.systemTemp.createTemp('dl');
+    final token = CancelToken();
+    final dest = File('${dir.path}/big.bin');
+    final f = downloadFile('$server/big.bin', dest, cancel: token, onProgress: (r, t) {
+      if (r > 0) token.cancel();
+    });
+    await expectLater(f, throwsA(isA<DownloadCancelled>()));
+    expect(await dest.exists(), isFalse);
+    expect(await File('${dest.path}.part').exists(), isFalse);
+  });
 }
