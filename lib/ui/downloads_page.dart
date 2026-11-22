@@ -107,7 +107,10 @@ class _DownloadsPageState extends State<DownloadsPage> {
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
                       SectionTitle(tr('translationModel')),
-                      for (final m in AppConfig.instance.models) _modelTile(context, m),
+                      if (NmtModel.supportedOnThisPlatform)
+                        for (final m in AppConfig.instance.models) _modelTile(context, m)
+                      else
+                        Text(tr('modelNotOnPlatform'), style: th.bodySmall),
                       SectionTitle(tr('wikiPacks')),
                       Text(tr('wikiPacksHelp'), style: th.bodySmall),
                       const SizedBox(height: 8),

@@ -38,6 +38,7 @@ class Translator extends ChangeNotifier {
   }
 
   Future<NmtModel?> model() async {
+    if (!NmtModel.supportedOnThisPlatform) return null;
     final spec = activeSpec;
     if (spec == null) return null;
     if (_model != null && _loadedId == spec.id) return _model;

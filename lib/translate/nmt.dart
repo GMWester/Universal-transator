@@ -25,6 +25,12 @@ class NmtModel {
 
   static const _required = ['encoder', 'decoder', 'tokenizer', 'config'];
 
+  /// ONNX Runtime is bundled on Android, Windows and Linux. Microsoft's iOS /
+  /// macOS packages are not downloadable at the moment (their CDN was retired),
+  /// so Apple platforms use the dictionary-based translation.
+  static bool get supportedOnThisPlatform =>
+      Platform.isAndroid || Platform.isWindows || Platform.isLinux;
+
   static String _file(String dir, String role) =>
       '$dir${Platform.pathSeparator}$role${role == 'tokenizer' || role == 'config' ? '.json' : '.onnx'}';
 

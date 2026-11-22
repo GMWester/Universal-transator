@@ -259,8 +259,6 @@ jobs:
           cache: true
       - name: Build
         run: |
-          # CocoaPods instead of Swift Package Manager (ONNX Runtime's SPM binary download fails TLS checks in Xcode)
-          flutter config --no-enable-swift-package-manager
           flutter build macos --release --build-name ${{ needs.signing-key-check.outputs.version }} --build-number ${{ needs.signing-key-check.outputs.build }}
           mkdir -p dist
           APP=$(ls -d build/macos/Build/Products/Release/*.app | head -1)
@@ -273,6 +271,7 @@ jobs:
         run: |
           APP=$(ls -d build/macos/Build/Products/Release/*.app | head -1)
           cp -R offline-data "$APP/Contents/Resources/offline-data"
+          rm -rf "$APP/Contents/Resources/offline-data/models"   # no ONNX Runtime on macOS yet
           codesign --force --deep --sign - "$APP"
           ditto -c -k --keepParent "$APP" dist/universal-translator-macos-full.zip
           ls -la dist
@@ -292,7 +291,6 @@ jobs:
           cache: true
       - name: Build (unsigned)
         run: |
-          flutter config --no-enable-swift-package-manager
           flutter build ios --release --no-codesign --build-name ${{ needs.signing-key-check.outputs.version }} --build-number ${{ needs.signing-key-check.outputs.build }}
           mkdir -p dist Payload
           cp -R build/ios/iphoneos/Runner.app Payload/

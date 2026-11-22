@@ -34,7 +34,11 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   sqlite3: ^3.9.1
-  flutter_onnxruntime: ^1.9.0
+  # Vendored copy (packages/flutter_onnxruntime): ONNX Runtime from NuGet;
+  # Android, Windows and Linux only (no official iOS/macOS binaries are
+  # currently downloadable, see packages/flutter_onnxruntime/nuget_onnxruntime.cmake).
+  flutter_onnxruntime:
+    path: packages/flutter_onnxruntime
   audioplayers: ^6.8.1
   path_provider: ^2.1.6
   http: ^1.6.0

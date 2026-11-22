@@ -67,7 +67,8 @@ class SettingsPage extends StatelessWidget {
               trailing: SpeakButton(onSpeak: () => app.speech.speakIpa('ˈjuːnɪvɜːsəl ˈtɹænsleɪtə')),
             ),
             SectionTitle(tr('translationModel')),
-            for (final m in AppConfig.instance.models)
+            if (!NmtModel.supportedOnThisPlatform) Text(tr('modelNotOnPlatform'), style: th.bodySmall),
+            for (final m in AppConfig.instance.models.where((_) => NmtModel.supportedOnThisPlatform))
               RadioListTile<String>(
                 contentPadding: EdgeInsets.zero,
                 value: m.id,

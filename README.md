@@ -81,7 +81,11 @@ flutter run                      # or: flutter build apk / windows / macos / lin
 ```
 
 * Flutter 3.50.1 or newer (stable).
-* iOS 16+ and macOS 14+ are required by ONNX Runtime.
+* ONNX Runtime (neural translation) comes from Microsoft's NuGet package, pinned by SHA-256
+  (`packages/flutter_onnxruntime`, a vendored copy of the `flutter_onnxruntime` plugin). It is used on
+  Android, Windows and Linux. Microsoft's iOS/macOS packages are currently not downloadable (their
+  `download.onnxruntime.ai` CDN was retired), so iPhone, iPad and Mac use the dictionary-based
+  translation until that is restored.
 * Linux needs `libgtk-3-dev`, `libgstreamer1.0-dev` and `libgstreamer-plugins-base1.0-dev`.
 
 ## Releasing (GitHub Actions)

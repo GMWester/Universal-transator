@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../translate/nmt.dart';
 import '../translate/translator.dart';
 import 'home.dart';
 import 'widgets.dart';
@@ -100,7 +101,7 @@ class _TranslatePageState extends State<TranslatePage> {
               const SizedBox(width: 12),
               if (app.translator.loading) Text(tr('loadingModel')),
             ]),
-            if (app.translator.activeSpec == null)
+            if (app.translator.activeSpec == null && NmtModel.supportedOnThisPlatform)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(tr('modelMissing'), style: Theme.of(context).textTheme.bodySmall),
