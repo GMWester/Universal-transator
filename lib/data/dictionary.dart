@@ -38,10 +38,12 @@ class Entry {
   final String? etymology;
   final List<String> synonyms, antonyms, derived, related;
 
-  /// First IPA without brackets, for speech.
+  /// Best IPA for speech (skips weak / unstressed / archaic variants), without brackets.
   String? get speakableIpa {
     if (ipa.isEmpty) return null;
-    var s = ipa.first.first.trim();
+    const weak = ['unstressed', 'weak', 'obsolete', 'dated', 'archaic', 'rare', 'nonstandard'];
+    final pick = ipa.firstWhere((p) => !weak.any((w) => p[1].toLowerCase().contains(w)), orElse: () => ipa.first);
+    var s = pick.first.trim();
     if (s.length > 1 && '/['.contains(s[0])) s = s.substring(1);
     if (s.isNotEmpty && '/]'.contains(s[s.length - 1])) s = s.substring(0, s.length - 1);
     return s.split(RegExp(r'[,~]')).first.trim();

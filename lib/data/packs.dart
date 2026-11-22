@@ -53,14 +53,19 @@ class PackManager extends ChangeNotifier implements PackSource {
   /// Packs shipped inside a "full" installer: packId -> {edition, langs, size, path}
   final Map<String, dynamic> _bundled = {};
 
-  Map<String, dynamic> get _entries => {..._installed, ..._bundled};
+  // A pack downloaded later (e.g. an update) wins over the installer's copy.
+  Map<String, dynamic> get _entries => {..._bundled, ..._installed};
 
   bool isBundled(String packId) => _bundled.containsKey(packId);
 
   File get _installedFile => File('${AppPaths.instance.packsDir.path}${Platform.pathSeparator}installed.json');
   File _manifestCache(String ed) =>
       File('${AppPaths.instance.packsDir.path}${Platform.pathSeparator}manifest-$ed.json');
-  String _dbPath(String packId) => _bundled[packId]?['path'] as String? ??
+  String _dbPath(String packId) => _installed.containsKey(packId)
+      ? _downloadedPath(packId)
+      : (_bundled[packId]?['path'] as String? ?? _downloadedPath(packId));
+
+  String _downloadedPath(String packId) =>
       '${AppPaths.instance.packsDir.path}${Platform.pathSeparator}$packId.sqlite';
 
   Future<void> init() async {
@@ -206,9 +211,9 @@ class PackManager extends ChangeNotifier implements PackSource {
         });
         if (st.cancel.cancelled) throw DownloadCancelled();
         _close(p.id);
-        await gunzipFile(gz, File(_dbPath(p.id)));
+        await gunzipFile(gz, File(_downloadedPath(p.id)));
         await _tryDelete(gz);
-        _installed[p.id] = {'edition': p.edition, 'langs': p.langs, 'size': p.unpacked};
+        _installed[p.id] = {'edition': p.edition, 'langs': p.langs, 'size': p.unpacked, 'sha': p.sha256};
         await _saveInstalled();
         active.remove(p.id);
         _registerLanguages();
@@ -242,9 +247,9 @@ class PackManager extends ChangeNotifier implements PackSource {
   /// One failing pack never stops the others; failed packs can be retried.
   bool bulkRunning = false;
   int bulkTotal = 0, bulkDone = 0, bulkFailed = 0;
-  Future<void> installAll(Iterable<PackInfo> list) async {
+  Future<void> installAll(Iterable<PackInfo> list, {bool updates = false}) async {
     if (bulkRunning) return;
-    final queue = list.where((p) => !isInstalled(p.id)).toList();
+    final queue = list.where((p) => updates ? isOutdated(p) : !isInstalled(p.id)).toList();
     bulkRunning = true;
     bulkTotal = queue.length;
     bulkDone = 0;
@@ -274,6 +279,33 @@ class PackManager extends ChangeNotifier implements PackSource {
     } finally {
       bulkRunning = false;
       notifyListeners();
+    }
+  }
+
+  /// True when a newer version of an installed pack has been published.
+  bool isOutdated(PackInfo p) {
+    if (!isInstalled(p.id)) return false;
+    final inst = _installed[p.id] ?? _bundled[p.id];
+    if (inst == null) return false;
+    final sha = inst['sha'] as String?;
+    if (sha != null && sha.isNotEmpty) return sha != p.sha256;
+    return (inst['size'] ?? -1) != p.unpacked; // installed before checksums were stored
+  }
+
+  List<PackInfo> outdatedPacks([String? edition]) => [
+        for (final e in manifests.entries)
+          if (edition == null || e.key == edition)
+            for (final p in e.value)
+              if (isOutdated(p)) p
+      ];
+
+  /// Quietly re-reads the pack lists of the editions the user has installed.
+  Future<void> refreshInstalledEditions() async {
+    final eds = {for (final v in _entries.values) v['edition'] as String};
+    for (final ed in eds) {
+      try {
+        await refresh(ed);
+      } catch (_) {}
     }
   }
 

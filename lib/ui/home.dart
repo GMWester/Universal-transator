@@ -28,6 +28,8 @@ class _HomePageState extends State<HomePage> {
     if (!app.settings.dataPromptShown && app.packs.installedIds.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _firstRunPrompt());
     }
+    // Dictionary updates (newer packs published): tell the user once per start.
+    Future.delayed(const Duration(seconds: 5), _checkDataUpdates);
     if (app.settings.autoCheckUpdates && !Platform.isIOS) {
       Future.delayed(const Duration(seconds: 3), _autoUpdateCheck);
     }
@@ -53,6 +55,20 @@ class _HomePageState extends State<HomePage> {
       ),
     );
     if (go == true && mounted) _go('downloads');
+  }
+
+  Future<void> _checkDataUpdates() async {
+    if (app.packs.installedIds.isEmpty) return;
+    await app.packs.refreshInstalledEditions();
+    final n = app.packs.outdatedPacks().length;
+    if (n == 0 || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 12),
+      content: Text(tr('dataUpdates', ['$n'])),
+      action: SnackBarAction(
+          label: tr('updateAllShort'),
+          onPressed: () => app.packs.installAll(app.packs.outdatedPacks(), updates: true)),
+    ));
   }
 
   Future<void> _autoUpdateCheck() async {

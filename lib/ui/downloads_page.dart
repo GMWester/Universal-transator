@@ -31,7 +31,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
   @override
   void initState() {
     super.initState();
-    if (app.packs.manifests[edition] == null) _refresh();
+    _refresh();
   }
 
   Future<void> _refresh() async {
@@ -220,6 +220,14 @@ class _DownloadsPageState extends State<DownloadsPage> {
                           : Text(tr('selectedSummary', ['${selected.length}', fmtBytes(todoBytes)])),
                     ),
                     const SizedBox(width: 12),
+                    if (!app.packs.bulkRunning && app.packs.outdatedPacks(edition).isNotEmpty) ...[
+                      FilledButton.tonalIcon(
+                        onPressed: () => app.packs.installAll(app.packs.outdatedPacks(edition), updates: true),
+                        icon: const Icon(Icons.update),
+                        label: Text(tr('updateAll', ['${app.packs.outdatedPacks(edition).length}'])),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     if (!app.packs.bulkRunning && app.packs.failedPacks(edition).isNotEmpty) ...[
                       OutlinedButton.icon(
                         onPressed: () => app.packs.installAll(app.packs.failedPacks(edition)),
@@ -257,15 +265,20 @@ class _DownloadsPageState extends State<DownloadsPage> {
     final bundled = app.packs.isBundled(p.id);
     final entries = p.entries[l] ?? 0;
     final shared = p.langs.length > 1;
+    final outdated = app.packs.isOutdated(p);
     final sub = [
+      if (outdated) tr('packUpdate'),
       '$entries ${tr('entries')}',
       shared ? '${fmtBytes(p.size)} ${tr('sharedPack', ['${p.langs.length}'])}' : fmtBytes(p.size),
       if (bundled) tr('includedInInstaller'),
     ].join(' · ');
     return CheckboxListTile(
       value: inst ? true : selected.contains(l),
-      onChanged: inst || st != null
+      // Installed rows stay enabled (checked) so their update / delete buttons work.
+      onChanged: st != null
           ? null
+          : inst
+          ? (_) {}
           : (v) => setState(() => v == true ? selected.add(l) : selected.remove(l)),
       title: Text(app.langs.name(l)),
       subtitle: st == null && app.packs.failed[p.id] != null
@@ -279,6 +292,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
       secondary: st != null && st.error == null
           ? IconButton(
               tooltip: tr('cancel'), icon: const Icon(Icons.close), onPressed: () => app.packs.cancel(p.id))
+          : outdated
+          ? IconButton(tooltip: tr('packUpdate'), icon: const Icon(Icons.update), onPressed: () => app.packs.install(p))
           : inst && !bundled
           ? IconButton(
               tooltip: tr('remove'), icon: const Icon(Icons.delete_outline), onPressed: () => app.packs.remove(p.id))

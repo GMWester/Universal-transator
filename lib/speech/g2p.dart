@@ -5,16 +5,20 @@ import 'package:unorm_dart/unorm_dart.dart' as unorm;
 /// Applies the grapheme-to-phoneme rules learned from a language's Wiktionary
 /// pronunciations by tools/build_wiktionary.py (learn_g2p).
 class LearnedG2p {
-  LearnedG2p(this._rules);
+  LearnedG2p(this._rules, [this._minTwo = 3]);
 
   factory LearnedG2p.fromJson(String s) {
     final j = jsonDecode(s) as Map<String, dynamic>;
     final r = (j['r'] as Map).map((k, v) => MapEntry(
         k as String, [for (final e in v as List) _Rule(e[0] as String, e[1] as String, e[2] as int)]));
-    return LearnedG2p(r);
+    return LearnedG2p(r, (j['m2'] as num?)?.toInt() ?? 3);
   }
 
   final Map<String, List<_Rule>> _rules;
+
+  /// Two-letter rules are used only when seen at least this often (tuned per
+  /// language by the data pipeline; low-count digraphs swallow vowels).
+  final int _minTwo;
 
   static List<String> graphemes(String word) {
     final out = <String>[];
@@ -40,7 +44,7 @@ class LearnedG2p {
       if (i + 1 < g.length) {
         final two = g[i] + g[i + 1];
         final r2 = _rules[two];
-        if (r2 != null && r2.first.n >= 3) {
+        if (r2 != null && r2.first.n >= _minTwo) {
           phon = _pick(r2, g, i, 2);
           used = 2;
         }

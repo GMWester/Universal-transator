@@ -242,7 +242,182 @@ def learn_g2p(pairs, iters=4, max_pairs=15000):
     return {'r': out}
 
 
+def apply_g2p(g2p, word, m2):
+    """Python copy of LearnedG2p.convert() in lib/speech/g2p.dart."""
+    rules = g2p['r']
+    g = graphemes(word)
+    out, i = [], 0
+
+    def pick(rs, i, n):
+        left = 'L' + (g[i - 1] if i > 0 else '^')
+        right = 'R' + (g[i + n] if i + n < len(g) else '$')
+        best = None
+        for ctx, ph, c in rs:
+            if (ctx == left or ctx == right) and (best is None or c > best[2]):
+                best = (ctx, ph, c)
+        return (best or rs[0])[1]
+
+    while i < len(g):
+        ph, used = None, 1
+        if i + 1 < len(g):
+            r2 = rules.get(g[i] + g[i + 1])
+            if r2 and r2[0][2] >= m2:
+                ph, used = pick(r2, i, 2), 2
+        if ph is None:
+            r1 = rules.get(g[i])
+            if r1:
+                ph = pick(r1, i, 1)
+        out.append(ph or '')
+        i += used
+    return ''.join(out)
+
+
+def _edit(a, b):
+    prev = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        cur = [i]
+        for j, y in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x != y)))
+        prev = cur
+    return prev[-1]
+
+
+def g2p_error(g2p, pairs, m2):
+    """Mean phoneme error rate on held-out (word, ipa) pairs."""
+    tot, n = 0.0, 0
+    for w, ipa in pairs:
+        ref = ipa_segments(ipa)
+        if not ref:
+            continue
+        hyp = ipa_segments(apply_g2p(g2p, w, m2))
+        tot += min(1.0, _edit(hyp, ref) / len(ref))
+        n += 1
+    return tot / n if n else 1.0
+
+
+def learn_checked_g2p(pairs, max_error=0.35):
+    """Learns rules on 90% of the words, tunes the two-letter threshold on the
+    other 10% and only returns rules that are accurate enough to be spoken."""
+    if len(pairs) < 60:
+        return None
+    test = pairs[::10]
+    train = [p for i, p in enumerate(pairs) if i % 10]
+    g2p = learn_g2p(train)
+    if not g2p:
+        return None
+    best = min(((g2p_error(g2p, test[:400], m2), m2) for m2 in (3, 10, 30, 100, 10**9)))
+    err, m2 = best
+    g2p['m2'] = m2
+    g2p['err'] = round(err, 3)
+    return g2p if err <= max_error else None
+
+
 # --------------------------------------------------------------------------
+TMP_IPA = """
+CREATE TABLE IF NOT EXISTS ipa_scored(lang TEXT, norm TEXT, ipa TEXT, score INTEGER, PRIMARY KEY(lang, norm));
+"""
+# Parts of speech whose pronunciation is not the word's normal reading
+# (e.g. German "IM" read as letters must not become the IPA of "im").
+WEAK_POS = {'abbrev', 'name', 'symbol', 'character', 'letter', 'prefix', 'suffix', 'infix',
+            'interfix', 'circumfix', 'affix', 'romanization', 'phrase', 'proverb', 'punct',
+            'combining_form', 'contraction'}
+WEAK_TAGS = ('unstressed', 'weak', 'obsolete', 'dated', 'archaic', 'rare', 'nonstandard', 'colloquial')
+
+
+def best_ipa(entry_word, pos, sounds):
+    """Pick the most suitable IPA of an entry and give it a score."""
+    best, best_sc = None, -10**9
+    for i, (ipa_raw, tags) in enumerate(sounds):
+        ipa = clean_ipa(ipa_raw)
+        if not ipa:
+            continue
+        sc = 100 - i
+        if any(t in tags.lower() for t in WEAK_TAGS):
+            sc -= 15
+        if sc > best_sc:
+            best, best_sc = ipa, sc
+    if best is None:
+        return None, 0
+    if pos in WEAK_POS:
+        best_sc -= 40
+    if entry_word != entry_word.lower():
+        best_sc -= 25
+    return best, best_sc
+
+
+# ---------------------------------------------------------------- eSpeak NG
+# Fills in IPA for every headword and inflected form Wiktionary has no
+# pronunciation for (eSpeak NG is only used here, at build time). Languages
+# written without vowels (Arabic, Persian, Hebrew ...) and Chinese / Japanese
+# characters are excluded: eSpeak cannot read those reliably.
+ESPEAK_SKIP = {'zh', 'cmn', 'yue', 'hak', 'nan', 'wuu', 'ja', 'ar', 'fa', 'ur', 'he', 'ps', 'sd',
+               'ug', 'yi', 'ks', 'arz', 'apc', 'ary', 'acm', 'ajp', 'afb', 'aeb', 'arq'}
+ESPEAK_ALIAS = {'en': 'en-us', 'fr': 'fr-fr', 'pt': 'pt', 'no': 'nb', 'nn': 'nb', 'vi': 'vi',
+                'grc': 'grc', 'la': 'la', 'zh-min-nan': None}
+WORD_OK = re.compile(r"^[^\W\d_][\w'’-]*$")
+
+
+def espeak_voices():
+    import subprocess
+    try:
+        out = subprocess.run(['espeak-ng', '--voices'], capture_output=True, text=True, check=True).stdout
+    except Exception:
+        return set()
+    return {line.split()[1] for line in out.splitlines()[1:] if len(line.split()) > 1}
+
+
+def _espeak_batch(args):
+    import subprocess
+    voice, words = args
+    data = ''.join(w + '.\n' for w in words)  # the period keeps output aligned 1 line per word
+    try:
+        r = subprocess.run(['espeak-ng', '-q', '--ipa', '-v', voice, '-b', '1'], input=data.encode(),
+                           capture_output=True, timeout=600)
+    except Exception:
+        return []
+    lines = r.stdout.decode('utf-8', 'replace').split('\n')
+    if lines and lines[-1] == '':
+        lines.pop()
+    if len(lines) != len(words):
+        return []
+    out = []
+    for w, ipa in zip(words, lines):
+        ipa = ipa.strip()
+        if not ipa or '(' in ipa:  # "(en)..." means eSpeak switched language / spelled it out
+            continue
+        out.append((w, ipa))
+    return out
+
+
+def espeak_fill(db, langs, voices, jobs):
+    from multiprocessing import Pool
+    total = 0
+    with Pool(jobs) as pool:
+        for lang in langs:
+            if lang in ESPEAK_SKIP:
+                continue
+            voice = ESPEAK_ALIAS.get(lang, lang)
+            if not voice or voice not in voices:
+                continue
+            words = [r[0] for r in db.execute(
+                """SELECT DISTINCT n FROM (SELECT norm AS n FROM entries WHERE lang=?
+                   UNION SELECT norm AS n FROM forms WHERE lang=?)
+                   WHERE n NOT IN (SELECT norm FROM ipa_scored WHERE lang=?)""", (lang, lang, lang))]
+            words = [w for w in words if WORD_OK.match(w) and len(w) <= 40]
+            if not words:
+                continue
+            batches = [(voice, words[i:i + 2000]) for i in range(0, len(words), 2000)]
+            n = 0
+            for res in pool.imap_unordered(_espeak_batch, batches):
+                db.executemany('INSERT OR IGNORE INTO ipa_scored VALUES(?,?,?,10)',
+                               [(lang, w, ipa) for w, ipa in res])
+                n += len(res)
+            db.commit()
+            total += n
+            print(f'  espeak {lang} ({voice}): {n} of {len(words)} words', flush=True)
+    return total
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--edition', default='en')
@@ -254,6 +429,8 @@ def main():
     ap.add_argument('--misc-size', type=int, default=60000, help='entries per misc pack')
     ap.add_argument('--only', default='', help='comma-separated language codes (testing)')
     ap.add_argument('--version', default='1')
+    ap.add_argument('--no-espeak', action='store_true', help='do not fill missing IPA with eSpeak NG')
+    ap.add_argument('--jobs', type=int, default=os.cpu_count() or 2)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     work = a.work or a.out
@@ -264,7 +441,7 @@ def main():
     if os.path.exists(tmp):
         os.remove(tmp)
     db = sqlite3.connect(tmp)
-    db.executescript('PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;' + SCHEMA)
+    db.executescript('PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;' + SCHEMA + TMP_IPA)
     lang_names = {}
     counts = collections.Counter()
     ipa_pairs = collections.defaultdict(list)
@@ -300,10 +477,13 @@ def main():
                 if k2 != key and len(k2) < 80:
                     db.execute('INSERT INTO forms VALUES(?,?,?,?)', (lang, k2, eid, tags))
             if d.get('ip'):
-                ipa = clean_ipa(d['ip'][0][0])
+                ipa, sc = best_ipa(word, e.get('pos', ''), d['ip'])
                 if ipa:
-                    db.execute('INSERT OR IGNORE INTO ipa VALUES(?,?,?)', (lang, key, ipa))
-                    if ' ' not in word and len(ipa_pairs[lang]) < 20000:
+                    # keep the best-scoring pronunciation per word
+                    db.execute('''INSERT INTO ipa_scored VALUES(?,?,?,?)
+                                  ON CONFLICT(lang, norm) DO UPDATE SET ipa=excluded.ipa, score=excluded.score
+                                  WHERE excluded.score > ipa_scored.score''', (lang, key, ipa, sc))
+                    if ' ' not in word and sc >= 60 and len(ipa_pairs[lang]) < 20000:
                         ipa_pairs[lang].append((word, ipa))
             if counts[lang] <= 50000 and ' ' not in word:
                 chars[lang].update(word)
@@ -334,6 +514,16 @@ def main():
     db.commit()
     print('indexing', flush=True)
     db.executescript(INDEXES)
+    if not a.no_espeak:
+        voices = espeak_voices()
+        if voices:
+            print('filling missing pronunciations with eSpeak NG', flush=True)
+            n = espeak_fill(db, sorted(counts), voices, a.jobs)
+            print(f'  {n} pronunciations added', flush=True)
+        else:
+            print('eSpeak NG not installed: missing pronunciations stay empty', flush=True)
+    db.execute('INSERT OR REPLACE INTO ipa SELECT lang, norm, ipa FROM ipa_scored')
+    db.commit()
 
     # ---- pack assignment
     big = sorted([l for l, c in counts.items() if c >= a.min_pack], key=lambda l: -counts[l])
@@ -375,7 +565,7 @@ def main():
             if gl:
                 p.execute('INSERT INTO gloss_fts(rowid, gloss) VALUES(?,?)', (rid, gl[:1000]))
         for l in langs:
-            g2p = learn_g2p(ipa_pairs.get(l, []))
+            g2p = learn_checked_g2p(ipa_pairs.get(l, []))
             ch = ''.join(c for c, _ in chars[l].most_common(400) if not c.isspace())
             p.execute('INSERT INTO langs VALUES(?,?,?,?,?,?)',
                       (l, lang_names.get(l, l), counts.get(l, 0), 1 if ipa_pairs.get(l) else 0,

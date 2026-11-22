@@ -85,6 +85,8 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
           df -h
+      - name: eSpeak NG (fills in missing pronunciations at build time)
+        run: sudo apt-get update && sudo apt-get install -y espeak-ng && espeak-ng --version
       - name: Build packs
         run: |
           ED=${{ matrix.edition }}
@@ -93,7 +95,7 @@ jobs:
           WORK=/mnt/work; sudo mkdir -p $WORK && sudo chown "$USER" $WORK || { WORK=$RUNNER_TEMP/work; mkdir -p $WORK; }
           curl -fL --retry 5 -o $WORK/raw.jsonl.gz "$URL"
           python3 tools/build_wiktionary.py --edition "$ED" --input $WORK/raw.jsonl.gz \
-            --out packs --work $WORK --version "${{ github.event.inputs.version || github.ref_name }}"
+            --out packs --work $WORK --jobs $(nproc) --version "${{ github.event.inputs.version || github.ref_name }}"
           rm -f $WORK/raw.jsonl.gz
           ls -la packs | head -50
       - name: Upload to the "data-<edition>" release
